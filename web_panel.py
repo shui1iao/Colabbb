@@ -1448,7 +1448,7 @@ class JobManager:
     @staticmethod
     def _initial_phase(module_name):
         return {"image": "准备模型与提示词编码", "edit": "准备原图与改图编码",
-                "video": "准备视频模型与首帧", "llm": "准备提示词引擎（无 token 进度）",
+                "video": "准备视频模型与首帧", "llm": "连接提示词引擎",
                 "warmup": "预热所选模型（尚未就绪）",
                 "start": "启动实例（不加载模型）", "stop": "关闭实例"}.get(module_name, "准备执行")
 
@@ -1532,8 +1532,10 @@ class JobManager:
             phase = "启动模型服务"
         elif "常驻进" in text or "全层加载" in text:
             phase = "加载模型至显存（尚未就绪）"
+        elif "正在通过极速隧道调用" in text:
+            phase = "提示词模型推理生成中（无 token 进度）"
         elif "全层常驻 GPU" in text or "引擎已就绪" in text:
-            phase = "LLM 模型已加载，等待推理结果（无 token 进度）" if item["module"] == "llm" else "模型服务已就绪，等待预热完成确认"
+            phase = "提示词模型推理生成中（无 token 进度）" if item["module"] == "llm" else "模型服务已就绪，等待预热完成确认"
         elif "已就绪:" in text or "服务已启动" in text:
             phase = "模型文件或服务已就绪，等待执行"
         elif "正在上传" in text:
