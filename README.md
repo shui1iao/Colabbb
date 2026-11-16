@@ -1,125 +1,143 @@
-# Colabbb v0.1.0
+# Colabbb v0.2.0
 
-Colabbb 是面向个人自托管的 AI 视觉创作工作台：用统一的中文 Web 界面管理远端 GPU 会话、3K 二阶段生图、24fps 声画视频、提示词对话与作品库。支持自适应深浅色主题、流畅切页动效、可视化工作流参数配置与透明矢量品牌图标。媒体与提示词各有独立 FIFO 队列，支持取消、任务记录与闲置关机租约。
+面向个人自托管的 AI 视觉创作工作台：中文 Web 面板管理远端 GPU 会话、二阶段 3K 生图、24fps 声画视频、提示词对话与作品库。包含深浅色主题、工作流参数配置、透明品牌图标、独立 FIFO 队列、随机灵感、取消任务与闲置关机租约。
 
-源码使用 [MIT License](LICENSE)。不包含账号、密钥、模型权重、运行记录或生成作品；模型、上游 CLI 与其他依赖遵循各自许可证和服务条款。
+**100% Docker Compose 部署**：宿主机只需 Docker Engine 与 Compose 插件，不需要 Python、Colab CLI、systemd 服务或宿主机 SSH 配置。MIT 许可；源码不含账号、密钥、模型或生成作品。上游工具与权重各遵循其许可和服务条款。
 
-## 架构
+## 三步启动
 
-```text
-浏览器 ── HTTPS 反代（建议）── Web 面板 / 登录鉴权
-                                  │
-Telegram Bot（可选）── 本机 IPC ────┤ JOB 双通道队列
-                                  └─ colab-ai 总控 CLI
-                                      ├─ Colab CLI：会话与远端脚本运行
-                                      ├─ idle_guard：闲置保护与租约
-                                      └─ SSH 回连的本机端口
-                                          ├─ ComfyUI → 图像 / 视频
-                                          ├─ llama-server → 提示词
-                                          └─ metrics → 资源采样
-ComfyUI TCP 代理（可选）───────── 本机 ComfyUI 隧道端口
-```
+### 1. 准备 `.env`
 
-`ui/panel_ui.html` 是唯一权威前端模板，`web_panel.py` 从磁盘读取，不内嵌重复 HTML。`state/panel_ui.html` 可热覆盖完整模板；自行改动脚本时必须同步重算 CSP 的 SHA-256。`ui/icons/` 保存原始透明图标。
-
-## 快速部署
-
-要求：Linux、Python 3.10+、OpenSSH 客户端；systemd 用于安装服务。离线验证另外需要 Node.js。宿主机需安装并完成 `google-colab-cli` 的登录授权，且其 Python 环境可以导入 `colab_cli`；请按该上游工具的当前说明配置 GPU 配额与账户。
+解压源码并进入目录，然后：
 
 ```bash
-# 解压源码后进入目录
-chmod +x install.sh colab-ai
-sudo ./install.sh --username admin
-# 交互输入至少12字符的管理员密码；脚本不安装或启动 GPU 作业
-sudo editor /opt/colabbb/config.env
-# 填写 COLABBB_TUNNEL_HOST 等，然后安装受限隧道公钥（见下一节）
-sudo systemctl enable --now colabbb-panel
+cp config.env.example .env
+chmod 600 .env
+# 编辑 .env，只需将 COLABBB_TUNNEL_HOST 改为 GPU 可访问的公网 IP 或域名
 ```
 
-默认安装到 `/opt/colabbb`。使用 `--prefix /path/to/colabbb` 可自定义路径；模板会相应改写。已有 `config.env`、`state/` 和 `outputs/` 不会被覆盖；已有其他位置的 `colab-ai` 系统命令不会被强行替换。
+保留默认 `COLABBB_TUNNEL_PORT=22222`、`COLABBB_TUNNEL_USER=tunnel`。防火墙/云安全组放行 **TCP 22222**；如经路由器需映射此端口。只有这一端口需要供 GPU 回连，**无需修改宿主机 sshd 或 authorized_keys**。
 
-非 systemd 环境可用 `--no-services --no-bin-link`，之后在安装目录运行 `python3 web_panel.py`。所有模块均可通过环境变量覆盖 `COLABBB_HOME`、`COLABBB_STATE_DIR`、`COLABBB_OUTPUT_DIR`；配置文件默认读取安装目录 `config.env`，也可通过 `COLABBB_CONFIG_FILE` 指定。环境变量优先。
-
-默认面板监听 `0.0.0.0:17860`。建议改为 `127.0.0.1` 并通过带 TLS 的反向代理访问；公网不要使用明文 HTTP 传输登录信息。反代应覆盖而非透传客户端伪造的 `X-Forwarded-For` / `X-Forwarded-Proto`，不得转发外部 `X-G4-Internal` 头。
-
-### 管理员初始化 / 重置
-
-没有默认密码，也没有免密模式。没有 `state/panel_auth.json` 时可以看到登录页和图标，但所有 API 均拒绝访问，页面明确提示初始化。
+### 2. 启动容器
 
 ```bash
-cd /opt/colabbb
-python3 web_panel.py --init-admin --username admin
-# 或 ./install.sh init-admin --username admin
+docker compose up -d
+# 若预构建镜像尚未公开，或要使用当前源码：
+# docker compose up -d --build --pull never
+docker compose logs -f colabbb
 ```
 
-无人值守初始化支持 `COLABBB_ADMIN_USER` 与 `COLABBB_ADMIN_PASS` 环境变量；不要将真实密码写入示例、命令行参数或 Git。设置 PBKDF2-HMAC-SHA256 哈希后以 `0600` 保存认证文件，重新初始化会轮换会话签名密钥与内部 IPC Token，使旧 Cookie 失效。建议在停止面板后重置并重新启动。`--skip-admin` 只跳过安装阶段交互，不会放行登录。
+Compose 使用 `ghcr.io/shui1iao/colabbb:latest`，同时支持 `build: .`。所有持久化数据都在 `./data:/data`，更新/重建容器不会丢失登录态与作品。不要删除 `data`；源码归档中不包含运行数据。
 
-## 反向 SSH 隧道
+### 3. 登录 Colab 并初始化管理员
 
-在 `config.env` 填写远端 GPU 能访问的宿主 SSH 地址：
-
-```dotenv
-COLABBB_TUNNEL_HOST=gpu-gateway.example.com
-COLABBB_TUNNEL_PORT=22
-COLABBB_TUNNEL_USER=root
+```bash
+docker compose exec -it colabbb colab auth login
+docker compose exec -it colabbb python3 /app/web_panel.py --init-admin --username admin
 ```
 
-`install.sh` 或首次远端运行的 `colab-ai` 自动生成 `state/tunnel_ed25519`；已有私钥不会重建。安装输出以下形式的公钥授权行（必须使用实际打印的公钥）：
+根据上游 CLI 的浏览器授权提示完成登录；管理员密码至少 12 字符，没有默认密码。未初始化时仅公开登录页/图标，API 全部拒绝访问。需要账户配额、网络与兼容 GPU 才能运行远端任务。
+
+默认面板仅发布在宿主机 `127.0.0.1:17860`。请经受控的 HTTPS 反向代理或 VPN 访问，不要在公网明文 HTTP 输入密码。可用 `COLABBB_BIND_IP` / `COLABBB_PANEL_PORT` 调整宿主发布地址/端口；容器内始终监听 `17860`。反代应覆盖而非透传伪造的 `X-Forwarded-For` / `X-Forwarded-Proto`，并移除外部 `X-G4-Internal` 头。
+
+无人值守首次启动可在 `.env` 临时配置 `COLABBB_ADMIN_USER`、`COLABBB_ADMIN_PASS`（至少 12 字符）。入口仅在认证文件不存在时初始化，密码只保存 PBKDF2 哈希；**初始化后删除明文变量并执行 `docker compose up -d --force-recreate`**，避免它继续留在容器配置中。也可随时执行上面的交互命令重置密码；认证文件原子替换并轮换会话签名和 IPC Token，旧 Cookie 立即失效。重置时应暂停 Bot 提交新任务。
+
+## 容器内置隔离隧道
 
 ```text
-restrict,port-forwarding,command="/bin/false" ssh-ed25519 YOUR_GENERATED_PUBLIC_KEY colabbb-tunnel
+浏览器 ── HTTPS 反代 / VPN ── 面板 :17860 ── JOB 双队列 ── colab-ai
+Telegram Bot（可选、同容器）────── 本机 IPC ──────┘          │
+                                                        Colab CLI
+GPU 上的 ComfyUI / LLM / metrics ── ssh -N -R ── 宿主 :22222
+                                                   │ Docker 映射
+                                                   └─ 容器 sshd :2222
+                                                      127.0.0.1:28188/28189/28190
+ComfyUI TCP 代理（可选、同容器） :18188 ────────────────┘
 ```
 
-将它加入 **上述 SSH 宿主对应用户** 的 `~/.ssh/authorized_keys`。只添加公钥，禁止上传私钥到代码仓库。确保 SSH 目录/文件权限分别为 `0700` / `0600`，sshd 允许 TCP 转发；建议专用隧道用户，`GatewayPorts no`。可额外用 `permitlisten` 限制仅监听 `127.0.0.1:28188`、`127.0.0.1:28189`、`127.0.0.1:28190`。强制命令阻止交互式 shell，但允许 `ssh -N` 反向转发。
+入口自动生成并持久化 `/data/state/tunnel_ed25519` 与 `/data/state/ssh_host_ed25519_key`，将受限公钥授权给**容器内**无 Shell 专用账户 `tunnel`。账户无可用密码，SSH 禁用密码/PAM/TTY/X11/本地转发，只允许该账户密钥登录和三个回环地址远端转发；强制 `/bin/false` 禁止执行命令。`restrict,port-forwarding,permitlisten=...` 进一步限制授权。Host Key 重建时复用，宿主机 SSH 配置完全不受影响。`COLABBB_INTERNAL_SSHD=0` 可关闭内置 sshd；如自行使用其他 SSH 端点，需自行授权密钥并覆盖用户与端口。
 
-总控读取本机私钥，编码为 `COLABBB_TUNNEL_KEY_B64`，连同宿主/端口/用户，经 `colab exec --env ...` 注入既有会话中的远端脚本（保留总控的会话复用语义；上游 `run` 会创建新虚拟机，不是 `exec` 的等价别名）；源码不携带固定私钥。远端当前使用自动接纳 SSH 主机密钥的模式，部署时应在受信网络核验宿主并按自身安全策略加固；只在可信 GPU 运行环境使用。私钥会出现在受信的本机子进程参数与远端环境中，勿开放宿主进程读取权限。
+`colab-ai` 将隧道地址/端口/用户和动态密钥经 `colab exec --env ...` 注入受信的 GPU 会话。远端目前自动接纳 SSH Host Key，因此只在可信网络与受信 GPU 环境使用；密钥可被本机高权限进程和远端环境读取，不要共享进程读取权限或将日志/环境公开。隧道端口不是通用管理 SSH 入口，不提供 Shell。
 
-## 功能与配置
+## 登录态、权限与备份
 
-- **图片**：内部兼容键 `v5_int8`；三种画幅（竖/横/方），三档步数，默认二阶段 3K；支持参考图和工作流参数配置。
-- **视频**：24fps 声画输出；`标准 832p / 超清 1088p / 2K 精修`；`2:3 / 3:2 / 1:1`；可选首帧参考图。
-- **提示词大师**：专业写实摄影 / 电影感视觉描述，保持 `<提示词>...</提示词>` 输出提取约定；系统提示词与采样参数可在面板设置中编辑，保存在 `state/studio_settings.json`。
-- **随机生图**：每次 1～10 张，从 16 组摄影主题不重复取样；已就绪的 LLM 优先扩写，否则立即使用完整内置提示词，直接提交同一 JOB 图像队列，无需任何外部业务模块。
-- **模型配置**：显示名称用 `COLABBB_IMAGE_LABEL`、`COLABBB_VIDEO_LABEL`、`COLABBB_LLM_LABEL`；仓库、路径、文件名用配置模板中的 `COLABBB_IMAGE_*`、`COLABBB_VIDEO_*`、`COLABBB_LLM_*`。仅替换仓库不能保证任意模型架构兼容，需匹配现有 ComfyUI 节点与工作流；`INT8` / `27B` 是兼容界面标签，示例权重的实际量化与参数量以模型文件为准。默认生图公开示例为 FP8 权重，LLM 示例为 Qwen3-30B-A3B GGUF。下载/显存需求和权重许可须在首次生成前确认。
-- **Token**：可选 `HF_TOKEN` / `CIVITAI_TOKEN`，仅在下载需要鉴权的权重时填写；不要提交真实 `*.env`。
-- **闲置关机**：`COLAB_IDLE_MIN` 控制面板/会话的闲置分钟数，租约保护长任务；Bot 默认活跃续期使用更短窗口，可设置 `COLABBB_TG_IDLE_MIN`。
+镜像固定默认环境：
 
-核心面板仅使用 Python 标准库。缩略图优化可选安装 Pillow，未安装时仍可读取原图。远端脚本会按需准备 ComfyUI、模型和推理依赖，首次加载可能较长；需要网络与合适 GPU。本仓库的离线测试不证明特定 GPU 性能、远端模型可下载性或上游服务可用性。
+| 环境变量 | 容器值 |
+|---|---|
+| `COLABBB_HOME` | `/app` |
+| `COLABBB_STATE_DIR` | `/data/state` |
+| `COLABBB_OUTPUT_DIR` | `/data/outputs` |
+| `HOME` | `/data/home` |
+| `PYTHON_KEYRING_BACKEND` | `keyrings.alt.file.PlaintextKeyring` |
 
-## 可选模块（默认不安装服务）
+Colab 配置位于 `/data/home/.config/colab-cli`，keyring 位于 `/data/home/.local/share/python_keyring/keyring_pass.cfg`。入口修正现有目录为 `0700`、敏感文件为 `0600`；Colab 包装入口设 `umask 077`，即使通过 `docker compose exec` 登录，新凭据也不公开。上游 0.8.0 的 `auth` 用于 VM 内认证而非本机登录，因此包装入口提供 `colab auth login`，直接调用上游 OAuth provider 的浏览器复制授权流程并确认 keyring 写入；另补充 `colab --version`。其他参数原样交给上游 CLI。
+
+**PlaintextKeyring 不是加密存储**：保护整个 `./data`，备份时停止容器并使用加密、受控备份位置。镜像进程以容器 root 启动独立 sshd，但无需特权模式、host 网络或 Docker socket。不要把 `data` 放进源码、镜像、Git 或公开归档。
+
+```bash
+docker compose down
+# 离线备份整个 data 目录至你自己的受控位置后再启动
+docker compose up -d
+# 更新已发布镜像：
+docker compose pull && docker compose up -d
+# 从源码更新：
+docker compose up -d --build --pull never
+```
+
+## 可选模块
 
 ### Telegram Bot
 
-`sudo ./install.sh --with-tgbot` 安装服务模板；按照 [模块文档](optional/tg-bot/README.md) 填写 Token 和授权用户。授权名单为空时全部拒绝。设置完成后 `sudo systemctl enable --now colabbb-tgbot`。Bot 通过本机 IPC 复用队列，不同步频道、不自动上传文件。
+在同一个 `.env` 设置 `COLABBB_ENABLE_TGBOT=1`、`TG_BOT_TOKEN` 与 `TG_ALLOWED_USERS`，再执行 `docker compose up -d --force-recreate`。入口在同一容器后台管理 Bot，通过回环 IPC 复用 Web 队列；无需额外进程管理或服务。空授权名单拒绝所有请求，仅支持授权用户私人聊天。详见 [Bot 文档](optional/tg-bot/README.md)。
 
 ### ComfyUI TCP 代理
 
-`sudo ./install.sh --with-comfy-proxy` 安装服务模板。`COLABBB_COMFY_PROXY_HOST/PORT` 控制监听，`COLABBB_COMFY_TARGET_HOST/PORT` 控制目标隧道；流量会刷新闲置活跃时间。**代理本身没有鉴权**，配置模板默认仅监听本机；如需公网访问，应先配置带认证的 HTTPS 反代、VPN 或防火墙白名单，再启动 `colabbb-comfy-proxy`。
+在 `.env` 设置 `COLABBB_ENABLE_COMFY_PROXY=1` 后重建容器。Compose 明确发布 `127.0.0.1:18188:18188`；代理容器内监听 `0.0.0.0:18188`，转发到内置隧道 `127.0.0.1:28188`，流量自动续期闲置租约。代理**没有认证**，不能直接暴露公网，请先配置带认证 HTTPS 反代或 VPN。可删除/注释 Compose 中此端口映射以完全不发布它。`COLABBB_COMFY_URL` 留空使用当前页面主机的 `18188` 入口，填完整 HTTPS URL 使用自定义入口，设 `hide`/`off` 隐藏按钮。
 
-面板右上角 ComfyUI 链接：`COLABBB_COMFY_URL` 为完整 `http(s)` URL 时使用指定地址；留空使用当前页面主机的 `18188` 端口；设为 `hide` 或 `off` 隐藏按钮。
+两个模块均默认关闭；设相应开关为 `0` 并重建容器即可禁用，不影响核心队列。入口监控所有启用的进程，任一异常退出会终止其他进程，由 Compose `restart: unless-stopped` 一并重启，信号通过 tini 正确回收。
 
-禁用选装模块只需 `systemctl disable --now colabbb-tgbot` / `colabbb-comfy-proxy`；不影响核心创作与队列。安装脚本不会自动启动服务，也不会修改防火墙、sshd 或 `authorized_keys`。
+## 创作与配置
 
-## 本地验证
+- **图片**：兼容键 `v5_int8`，竖/横/方画幅，三档步数与默认二阶段 3K，支持参考图。
+- **视频**：24fps 声画输出，832p / 1088p / 2K，三种画幅，可选首帧参考图。
+- **提示词大师**：写实摄影/电影视觉描述，保留 `<提示词>...</提示词>` 提取约定；系统提示词、采样与工作流参数保存于 `/data/state/studio_settings.json`。
+- **随机生图**：每次 1～10 张，从 16 组主题不重复取样；LLM 就绪则扩写，否则用内置提示词直接进入相同 JOB 队列。
+- **模型覆盖**：`COLABBB_IMAGE_*` / `COLABBB_VIDEO_*` / `COLABBB_LLM_*`，详见 `config.env.example`。更换仓库不保证模型架构兼容，须匹配 ComfyUI 节点与工作流。INT8 / 27B 是兼容标签，示例实际为 FP8 生图与 Qwen3-30B-A3B GGUF；以权重说明为准。
+- **下载凭据**：可选 `HF_TOKEN` / `CIVITAI_TOKEN`，不要提交真实 `.env`。远端按需下载依赖与权重，首次加载较慢。
+- **闲置保护**：`COLAB_IDLE_MIN` 配置会话闲置分钟，租约保护长任务；Bot 活跃续期可用 `COLABBB_TG_IDLE_MIN` 调整。
+
+`ui/panel_ui.html` 为唯一权威前端；`/data/state/panel_ui.html` 可热覆盖完整模板。修改内联脚本须同步更新 CSP 的 SHA-256。
+
+## 验证与发布
+
+部署只需 Docker；开发离线回归额外需要 Python、Node.js 与 SSH 工具（可在开发容器内使用）。
 
 ```bash
 python3 tests/smoke_test.py
+# 以下测试需 Docker、宿主 SSH 客户端；使用临时卷和随机回环端口，不连接 GPU/Telegram：
+python3 tests/docker_e2e.py --build
 ```
 
-使用临时隔离目录与随机本机端口，执行全部 Python 编译、Bash 语法、内联 JS `node --check`、精确 CSP 哈希验证、随机灵感离线单元测试、管理员初始化、真实 HTTP 登录/Cookie/API/图标/热覆盖/退出测试。不发送 Telegram 请求、不执行 Colab GPU 任务，也不创建系统服务。
+离线测试覆盖 Python/Bash/JS 语法、CSP、Docker 配置契约、随机队列、管理员、Cookie、API、图标和模板热覆盖。Docker 实测构建镜像，检查 Colab/keyring，建立真实受限反向 SSH HTTP 隧道、拒绝 Shell/越权端口，验证面板登录和认证持久化、关闭 sshd 与清理临时容器/数据。不会替代真实 GPU 推理、模型许可/可下载性或交互 OAuth 授权验证。
+
+GitHub Actions 在 `main` 或 `v*` tag 推送时构建 `linux/amd64` 并用内置 `GITHUB_TOKEN` 推送 GHCR `latest` 及版本 tag；未执行推送前镜像可能尚未公开。源码归档采用提交内容，不包含 `.git`、缓存或数据。
 
 ## 源码布局
 
 ```text
-colab-ai                 总控、配置注入、会话与媒体执行
-web_panel.py             登录、API、双通道 JOB 与随机灵感
-idle_guard.py            闲置关机与租约保护
+Dockerfile / .dockerignore / docker-compose.yml
+ docker/entrypoint.sh     初始化、受限 sshd、可选模块与进程管理
+ docker/colab.sh          Colab 安全写入包装入口
+ docker/colab_login.py    上游 OAuth provider 登录适配
+colab-ai                 总控与远端环境注入
+web_panel.py             登录、API、双通道队列
+idle_guard.py            闲置保护
 remote_*.py              图像/视频/LLM/指标/卸载远端执行器
-ui/                      权威工作台模板与透明品牌图标
-optional/                Bot 与 ComfyUI 代理
-systemd/                 核心与可选模块的独立服务模板
-tests/smoke_test.py       无 GPU 离线与 HTTP 端到端验证
-config.env.example       不含真实凭据的统一配置模板
+ui/                      权威模板与品牌图标
+optional/                Bot 与 ComfyUI TCP 代理
+config.env.example       无凭据的 .env 模板
+ tests/smoke_test.py      离线和 HTTP 回归
+ tests/docker_e2e.py      真实 Docker 与反向隧道验证
+.github/workflows/       GHCR 镜像发布
 ```
-
-源码发布包不包括 `.git`、缓存、真实配置、`state/`、`outputs/` 或模型文件；运行数据始终留在部署机器上。

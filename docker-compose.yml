@@ -1,0 +1,24 @@
+services:
+  colabbb:
+    image: ghcr.io/shui1iao/colabbb:latest
+    build: .
+    init: true
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Keep application ports fixed; *_PORT in .env controls host publishing.
+      COLABBB_PANEL_HOST: 0.0.0.0
+      COLABBB_PANEL_PORT: "17860"
+      COLABBB_COMFY_PROXY_HOST: 0.0.0.0
+      COLABBB_COMFY_PROXY_PORT: "18188"
+      COLABBB_TUNNEL_PORT: ${COLABBB_TUNNEL_PORT:-22222}
+      COLABBB_TUNNEL_USER: ${COLABBB_TUNNEL_USER:-tunnel}
+    volumes:
+      - ./data:/data
+    ports:
+      - "${COLABBB_BIND_IP:-127.0.0.1}:${COLABBB_PANEL_PORT:-17860}:17860"
+      - "${COLABBB_TUNNEL_PORT:-22222}:2222"
+      # Optional proxy: enable COLABBB_ENABLE_COMFY_PROXY=1 in .env first.
+      # No built-in authentication; keep this host binding on loopback.
+      - "127.0.0.1:${COLABBB_COMFY_PROXY_PORT:-18188}:18188"
+    stop_grace_period: 20s

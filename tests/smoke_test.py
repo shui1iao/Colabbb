@@ -55,8 +55,16 @@ def main():
         files = sorted(ROOT.rglob('*.py')) + [ROOT / 'colab-ai']
         for i, path in enumerate(files):
             py_compile.compile(str(path), cfile=str(temp / f'{i}.pyc'), doraise=True)
-        subprocess.run(['bash', '-n', str(ROOT / 'install.sh')], check=True)
-        print(f'PASS Python compile: {len(files)} files; bash -n')
+        for script in ['entrypoint.sh', 'colab.sh']:
+            subprocess.run(['bash', '-n', str(ROOT / 'docker' / script)], check=True)
+        dockerfile = (ROOT / 'Dockerfile').read_text()
+        compose = (ROOT / 'docker-compose.yml').read_text()
+        for token in ['python:3.12-slim-bookworm', 'openssh-server', 'google-colab-cli', 'keyrings.alt', 'Pillow', 'HOME=/data/home', 'tini']:
+            assert token in dockerfile, token
+        for token in ['ghcr.io/shui1iao/colabbb:latest', 'build: .', './data:/data', 'env_file: .env', 'init: true', 'restart: unless-stopped', ':2222']:
+            assert token in compose, token
+        assert not (ROOT / 'install.sh').exists() and not (ROOT / 'systemd').exists()
+        print(f'PASS Python compile: {len(files)} files; entrypoint bash -n; Docker/Compose contract')
         with socket.socket() as sock:
             sock.bind(('127.0.0.1', 0)); port = sock.getsockname()[1]
         password = secrets.token_urlsafe(24)

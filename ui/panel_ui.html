@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-q9nv1KNLPRmyRUtT5zDSgzFknhTGBfDuNPn8UTEY6fg='; style-src 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; form-action 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; media-src 'self'; font-src 'none'; worker-src 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-cvDRWBbNlX58aQy4flDyGpLz/U94216Icv48zgrRpfA='; style-src 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; form-action 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; media-src 'self'; font-src 'none'; worker-src 'none'">
   <meta name="color-scheme" content="light dark">
   <title>G4 工作台</title>
   <link rel="icon" type="image/svg+xml" href="/g4-icon.svg?v=g5">
@@ -524,9 +524,9 @@
   }
   .z-select-menu.open {
     display: flex;
-    animation: katPopIn 120ms cubic-bezier(0.2, 0, 0, 1);
+    animation: studioPopIn 120ms cubic-bezier(0.2, 0, 0, 1);
   }
-  @keyframes katPopIn {
+  @keyframes studioPopIn {
     0% { opacity: 0; transform: translateY(-4px) scale(0.985); }
     100% { opacity: 1; transform: translateY(0) scale(1); }
   }
@@ -1594,7 +1594,7 @@
   #toggleBatchBtn { min-width: 88px; justify-content: center; }
 
   /* Batch Selection Bar (Recessed Tray + Elevated Controls) */
-  @keyframes katBatchReveal {
+  @keyframes studioBatchReveal {
     0% { opacity: 0; transform: translateY(-4px); }
     100% { opacity: 1; transform: translateY(0); }
   }
@@ -1609,7 +1609,7 @@
     background: var(--card-2);
     box-shadow: inset 0 0 0 1px var(--line);
     min-width: 0;
-    animation: katBatchReveal 140ms var(--ease);
+    animation: studioBatchReveal 140ms var(--ease);
   }
   .batch-toolbar[hidden] { display: none !important; }
   .batch-left, .batch-right {
@@ -1936,7 +1936,7 @@
   }
   .random-count-picker.open {
     display: flex;
-    animation: katPopIn 120ms cubic-bezier(0.2, 0, 0, 1);
+    animation: studioPopIn 120ms cubic-bezier(0.2, 0, 0, 1);
   }
   .rand-pop-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
   .rand-pop-title { font-size: 13px; font-weight: 600; color: var(--fg); }
@@ -4533,7 +4533,7 @@ function toggleRandomPicker() {
     closeRandomPicker(true);
     return;
   }
-  closeZenoSelect(false);
+  closeStudioSelect(false);
   closeWarmupPicker(false);
   const picker = document.getElementById('randomCountPicker');
   const btn = document.getElementById('randomRunBtn');
@@ -5234,7 +5234,7 @@ async function loadColabStatus(force = false) {
 const HW_METRICS_CACHE_KEY = 'g4_hw_metrics_last_v1';
 let _metricsBusy = false;
 
-function applyZenoBar(barEl, pct) {
+function applyStudioBar(barEl, pct) {
   if (!barEl) return;
   if (typeof pct !== 'number' || !Number.isFinite(pct)) {
     barEl.style.width = '0%';
@@ -5267,10 +5267,10 @@ function renderHwMetricsSnapshot(m) {
     setHwTextWithSub(document.getElementById('hwValRam'), '--');
     setHwTextWithSub(document.getElementById('hwValVram'), '--');
     setHwTextWithSub(document.getElementById('hwValDisk'), '--');
-    applyZenoBar(document.getElementById('hwBarCpu'), null);
-    applyZenoBar(document.getElementById('hwBarRam'), null);
-    applyZenoBar(document.getElementById('hwBarVram'), null);
-    applyZenoBar(document.getElementById('hwBarDisk'), null);
+    applyStudioBar(document.getElementById('hwBarCpu'), null);
+    applyStudioBar(document.getElementById('hwBarRam'), null);
+    applyStudioBar(document.getElementById('hwBarVram'), null);
+    applyStudioBar(document.getElementById('hwBarDisk'), null);
     try { sessionStorage.removeItem(HW_METRICS_CACHE_KEY); } catch (_) {}
     return;
   }
@@ -5279,34 +5279,34 @@ function renderHwMetricsSnapshot(m) {
   if (typeof m.cpu_pct === 'number') {
     const coreSub = m.cpu_cores ? `${m.cpu_cores} 核` : '';
     setHwTextWithSub(document.getElementById('hwValCpu'), `${m.cpu_pct.toFixed(1)}%`, coreSub);
-    applyZenoBar(document.getElementById('hwBarCpu'), m.cpu_pct);
+    applyStudioBar(document.getElementById('hwBarCpu'), m.cpu_pct);
   } else {
     setHwTextWithSub(document.getElementById('hwValCpu'), '--');
-    applyZenoBar(document.getElementById('hwBarCpu'), null);
+    applyStudioBar(document.getElementById('hwBarCpu'), null);
   }
 
   if (typeof m.ram_used_gb === 'number' && typeof m.ram_total_gb === 'number') {
     setHwTextWithSub(document.getElementById('hwValRam'), `${m.ram_used_gb.toFixed(1)} / ${m.ram_total_gb.toFixed(0)} GB`, `${Math.round(m.ram_pct || 0)}%`);
-    applyZenoBar(document.getElementById('hwBarRam'), m.ram_pct);
+    applyStudioBar(document.getElementById('hwBarRam'), m.ram_pct);
   } else {
     setHwTextWithSub(document.getElementById('hwValRam'), '--');
-    applyZenoBar(document.getElementById('hwBarRam'), null);
+    applyStudioBar(document.getElementById('hwBarRam'), null);
   }
 
   if (typeof m.vram_used_gb === 'number' && typeof m.vram_total_gb === 'number') {
     setHwTextWithSub(document.getElementById('hwValVram'), `${m.vram_used_gb.toFixed(1)} / ${m.vram_total_gb.toFixed(0)} GB`, `${Math.round(m.vram_pct || 0)}%`);
-    applyZenoBar(document.getElementById('hwBarVram'), m.vram_pct);
+    applyStudioBar(document.getElementById('hwBarVram'), m.vram_pct);
   } else {
     setHwTextWithSub(document.getElementById('hwValVram'), '--');
-    applyZenoBar(document.getElementById('hwBarVram'), null);
+    applyStudioBar(document.getElementById('hwBarVram'), null);
   }
 
   if (typeof m.disk_used_gb === 'number' && typeof m.disk_total_gb === 'number') {
     setHwTextWithSub(document.getElementById('hwValDisk'), `${m.disk_used_gb.toFixed(1)} / ${m.disk_total_gb.toFixed(0)} GB`, `${Math.round(m.disk_pct || 0)}%`);
-    applyZenoBar(document.getElementById('hwBarDisk'), m.disk_pct);
+    applyStudioBar(document.getElementById('hwBarDisk'), m.disk_pct);
   } else {
     setHwTextWithSub(document.getElementById('hwValDisk'), '--');
-    applyZenoBar(document.getElementById('hwBarDisk'), null);
+    applyStudioBar(document.getElementById('hwBarDisk'), null);
   }
 
   try { sessionStorage.setItem(HW_METRICS_CACHE_KEY, JSON.stringify(m)); } catch (_) {}
@@ -6410,7 +6410,7 @@ function populateSettingsForm(cfg) {
     document.getElementById(`cfgTier_${tk}_ref`).value = t.ref ?? 5;
   });
   updateModalTierTotals();
-  syncAllZenoSelects();
+  syncAllStudioSelects();
 }
 
 function collectSettingsForm() {
@@ -6514,7 +6514,7 @@ async function openSettingsDialog() {
 }
 
 function closeSettingsDialog() {
-  closeZenoSelect(false);
+  closeStudioSelect(false);
   const dlg = document.getElementById('settingsDialog');
   if (dlg && dlg.open) dlg.close();
 }
@@ -6602,7 +6602,7 @@ function requestResetSettings(section) {
 const zSelectRegistry = new Map();
 let activeZSelect = null;
 
-function enhanceZenoSelect(sel) {
+function enhanceStudioSelect(sel) {
   if (!sel || zSelectRegistry.has(sel)) return;
   const wrap = el('div', 'z-select');
   const trigger = el('button', 'z-select-trigger');
@@ -6617,7 +6617,7 @@ function enhanceZenoSelect(sel) {
       assocLbl.addEventListener('click', (ev) => {
         ev.preventDefault();
         trigger.focus();
-        openZenoSelect(sel);
+        openStudioSelect(sel);
       });
     }
   }
@@ -6631,22 +6631,22 @@ function enhanceZenoSelect(sel) {
 
   const entry = { sel, wrap, trigger, lblSpan };
   zSelectRegistry.set(sel, entry);
-  syncZenoSelect(sel);
+  syncStudioSelect(sel);
 
   trigger.addEventListener('click', (e) => {
     e.stopPropagation();
-    if (activeZSelect === entry) closeZenoSelect(true);
-    else openZenoSelect(sel);
+    if (activeZSelect === entry) closeStudioSelect(true);
+    else openStudioSelect(sel);
   });
   trigger.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      openZenoSelect(sel);
+      openStudioSelect(sel);
     }
   });
 }
 
-function syncZenoSelect(sel) {
+function syncStudioSelect(sel) {
   const entry = zSelectRegistry.get(sel);
   if (!entry) return;
   entry.wrap.hidden = !!sel.hidden;
@@ -6655,8 +6655,8 @@ function syncZenoSelect(sel) {
   entry.trigger.disabled = !!sel.disabled;
 }
 
-function syncAllZenoSelects() {
-  zSelectRegistry.forEach((_, sel) => syncZenoSelect(sel));
+function syncAllStudioSelects() {
+  zSelectRegistry.forEach((_, sel) => syncStudioSelect(sel));
 }
 
 function scrollMenuOptionIntoView(menu, item) {
@@ -6670,7 +6670,7 @@ function scrollMenuOptionIntoView(menu, item) {
   }
 }
 
-function positionZenoMenu(menu, entry, inDialog) {
+function positionStudioMenu(menu, entry, inDialog) {
   const r = entry.trigger.getBoundingClientRect();
   const vw = window.innerWidth;
   const vh = window.innerHeight;
@@ -6712,7 +6712,7 @@ function positionZenoMenu(menu, entry, inDialog) {
   }
 }
 
-function closeZenoSelect(restoreFocus = false) {
+function closeStudioSelect(restoreFocus = false) {
   if (!activeZSelect) return;
   const prev = activeZSelect;
   activeZSelect = null;
@@ -6726,11 +6726,11 @@ function closeZenoSelect(restoreFocus = false) {
 
 }
 
-function openZenoSelect(sel) {
+function openStudioSelect(sel) {
   const entry = zSelectRegistry.get(sel);
   const menu = document.getElementById('zSelectMenu');
   if (!entry || !menu || sel.disabled || sel.hidden) return;
-  if (activeZSelect && activeZSelect !== entry) closeZenoSelect(false);
+  if (activeZSelect && activeZSelect !== entry) closeStudioSelect(false);
 
   menu.replaceChildren();
   const opts = Array.from(sel.options);
@@ -6751,10 +6751,10 @@ function openZenoSelect(sel) {
       if (sel.selectedIndex !== idx) {
         sel.selectedIndex = idx;
         sel.value = o.value;
-        syncZenoSelect(sel);
+        syncStudioSelect(sel);
         sel.dispatchEvent(new Event('change', { bubbles: true }));
       }
-      closeZenoSelect(true);
+      closeStudioSelect(true);
     });
     menu.append(btn);
   });
@@ -6767,7 +6767,7 @@ function openZenoSelect(sel) {
   entry.wrap.classList.add('open');
   entry.trigger.setAttribute('aria-expanded', 'true');
   menu.classList.add('open');
-  positionZenoMenu(menu, entry, !!dlg);
+  positionStudioMenu(menu, entry, !!dlg);
 
   const selNode = menu.children[activeIdx];
   if (selNode) {
@@ -6779,7 +6779,7 @@ function openZenoSelect(sel) {
   }
 }
 
-document.querySelectorAll('select.settings-select').forEach(enhanceZenoSelect);
+document.querySelectorAll('select.settings-select').forEach(enhanceStudioSelect);
 
 document.getElementById('zSelectMenu')?.addEventListener('keydown', (e) => {
   if (!activeZSelect) return;
@@ -6790,7 +6790,7 @@ document.getElementById('zSelectMenu')?.addEventListener('keydown', (e) => {
   if (cur < 0) cur = Math.max(0, activeZSelect.sel.selectedIndex);
   if (e.key === 'Escape' || e.key === 'Tab') {
     e.preventDefault();
-    closeZenoSelect(true);
+    closeStudioSelect(true);
     return;
   }
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
@@ -6810,15 +6810,15 @@ document.getElementById('zSelectMenu')?.addEventListener('keydown', (e) => {
 document.addEventListener('pointerdown', (e) => {
   if (!activeZSelect) return;
   if (e.target.closest('#zSelectMenu') || activeZSelect.wrap.contains(e.target)) return;
-  closeZenoSelect(false);
+  closeStudioSelect(false);
 });
-window.addEventListener('resize', () => { if (activeZSelect) closeZenoSelect(false); });
+window.addEventListener('resize', () => { if (activeZSelect) closeStudioSelect(false); });
 document.addEventListener('scroll', (e) => {
   if (!activeZSelect) return;
   const menu = document.getElementById('zSelectMenu');
   if (!menu || !menu.classList.contains('in-dialog')) return;
   if (e.target === menu || menu.contains(e.target)) return;
-  closeZenoSelect(false);
+  closeStudioSelect(false);
 }, true);
 
 

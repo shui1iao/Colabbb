@@ -26,3 +26,9 @@ Thumbs.db
 *.swp
 *.swo
 *~
+
+# Docker persistent volume and generated release files
+data/
+dist/
+.env
+.env.*

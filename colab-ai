@@ -345,15 +345,11 @@ def _ensure_tunnel_keypair() -> str:
         )
         if os.path.isfile(key_file):
             os.chmod(key_file, 0o600)
-            pub_file = key_file + ".pub"
-            if os.path.isfile(pub_file):
-                pub_line = open(pub_file, "r", encoding="utf-8").read().strip()
-                print(
-                    f'[colab-ai] 已自动生成反向隧道密钥对: {key_file}\n'
-                    f'[colab-ai] 请确保以下受限公钥已加入宿主机 ~/.ssh/authorized_keys:\n'
-                    f'restrict,port-forwarding,command="/bin/false" {pub_line}',
-                    flush=True,
-                )
+            print(
+                f'[colab-ai] 已自动生成反向隧道密钥对: {key_file}\n'
+                '[colab-ai] 容器内置 sshd 会在启动时自动授权此密钥；无需改动宿主机 SSH。',
+                flush=True,
+            )
     if os.path.isfile(key_file):
         os.chmod(key_file, 0o600)
         with open(key_file, "rb") as fh:
@@ -388,8 +384,8 @@ def _build_remote_env_flags(extra_env: dict = None) -> list:
     env_map = {}
     tunnel_b64 = _ensure_tunnel_keypair()
     tunnel_host = os.environ.get("COLABBB_TUNNEL_HOST", "").strip()
-    tunnel_port = os.environ.get("COLABBB_TUNNEL_PORT", "22").strip() or "22"
-    tunnel_user = os.environ.get("COLABBB_TUNNEL_USER", "root").strip() or "root"
+    tunnel_port = os.environ.get("COLABBB_TUNNEL_PORT", "22222").strip() or "22222"
+    tunnel_user = os.environ.get("COLABBB_TUNNEL_USER", "tunnel").strip() or "tunnel"
 
     if tunnel_b64:
         env_map["COLABBB_TUNNEL_KEY_B64"] = tunnel_b64
@@ -749,7 +745,7 @@ def has_active_session(session: str) -> bool:
 
 
 def ensure_port_proxy():
-    """可选 ComfyUI 端口转发：仅在显式启用且端口未被 systemd 监听时后台拉起。"""
+    """可选 ComfyUI 端口转发：仅在显式启用且端口尚未被容器入口进程监听时后台拉起。"""
     enabled = os.environ.get("COLABBB_ENABLE_COMFY_PROXY", "").strip().lower() in ("1", "true", "yes", "on")
     if not enabled and not os.path.exists(os.path.join(STATE_DIR, "enable_comfy_proxy")):
         return
