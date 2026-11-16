@@ -1,0 +1,1855 @@
+#!/usr/bin/env python3
+"""
+colab-ai: Colabbb 远端 GPU AI 创作工作台总控 CLI
+支持模块:
+- image : ComfyUI 3K 二阶段精绘生图（支持挂载参考图 --ref-image 保持主体特征）
+- video : 24fps 声画同步视频生成（支持首尾帧图 --ref-image，三档画质 std / hd / uhd2k）
+- llm   : 本地 GGUF 提示词生成与多轮原位改写服务 (llama-server)
+- unload: 远端显存释放工具
+"""
+import argparse, base64, copy, fcntl, glob, hashlib, json, math, mimetypes, os, re, shutil, signal, socket, subprocess, sys, time, urllib.parse, urllib.request, uuid
+from contextlib import ExitStack, contextmanager
+
+os.environ.setdefault("COLAB_CLI_ASSIGN_RETRIES", "1")
+os.environ.setdefault("COLAB_CLI_RETRY_BACKOFF", "15")
+
+
+def _load_env_file(env_path: str):
+    if not env_path or not os.path.isfile(env_path):
+        return
+    try:
+        with open(env_path, "r", encoding="utf-8") as fh:
+            for raw_line in fh:
+                line = raw_line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                k = k.strip()
+                v = v.strip()
+                if len(v) >= 2 and v[0] == v[-1] and v[0] in ("'", '"'):
+                    v = v[1:-1]
+                if k and k not in os.environ:
+                    os.environ[k] = v
+    except OSError:
+        pass
+
+
+_SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
+for _cand_env in (
+    os.environ.get("COLABBB_CONFIG_FILE", ""),
+    os.path.join(os.environ.get("COLABBB_HOME", ""), "config.env") if os.environ.get("COLABBB_HOME") else "",
+    os.path.join(_SCRIPT_DIR, "config.env"),
+    "/opt/colabbb/config.env",
+):
+    if _cand_env and os.path.isfile(_cand_env):
+        _load_env_file(_cand_env)
+        break
+
+if os.environ.get("COLABBB_HOME"):
+    BASE_DIR = os.path.abspath(os.environ["COLABBB_HOME"])
+elif os.path.isfile(os.path.join(_SCRIPT_DIR, "remote_image.py")):
+    BASE_DIR = _SCRIPT_DIR
+else:
+    BASE_DIR = "/opt/colabbb"
+
+OUT_ROOT = os.path.abspath(os.environ.get("COLABBB_OUTPUT_DIR") or os.path.join(BASE_DIR, "outputs"))
+STATE_DIR = os.path.abspath(os.environ.get("COLABBB_STATE_DIR") or os.path.join(BASE_DIR, "state"))
+SETTINGS_FILE = os.path.join(STATE_DIR, "studio_settings.json")
+IDLE_TOUCH = os.path.join(STATE_DIR, "last_active.ts")
+IDLE_PID = os.path.join(STATE_DIR, "autostop.pid")
+
+COMFY_TUNNEL_PORT = int(os.environ.get("COLABBB_COMFY_TUNNEL_PORT", "28188"))
+LLM_TUNNEL_PORT = int(os.environ.get("COLABBB_LLM_TUNNEL_PORT", "28189"))
+
+IMAGE_LABEL = os.environ.get("COLABBB_IMAGE_LABEL", "Flux / DiT INT8").strip()
+IMAGE_UNET_FILE = os.environ.get("COLABBB_IMAGE_UNET_FILE", "krea2_dev_fp8_e4m3fn.safetensors").strip()
+IMAGE_BF16_FILE = os.environ.get("COLABBB_IMAGE_BF16_FILE", "krea2_dev_bf16.safetensors").strip()
+IMAGE_CLIP_FILE = os.environ.get("COLABBB_IMAGE_CLIP_FILE", "qwen_3_4b.safetensors").strip()
+IMAGE_CLIP_TYPE = os.environ.get("COLABBB_IMAGE_CLIP_TYPE", "krea2").strip()
+IMAGE_VAE_FILE = os.environ.get("COLABBB_IMAGE_VAE_FILE", "qwen_image_vae.safetensors").strip()
+
+VALID_SAMPLERS = ("euler", "euler_ancestral", "dpmpp_2m", "dpmpp_2m_sde", "uni_pc", "heun", "deis")
+VALID_SCHEDULERS = ("simple", "normal", "karras", "exponential", "sgm_uniform", "beta", "ddim_uniform")
+VALID_UPSCALE_METHODS = ("lanczos", "bicubic", "bilinear", "area", "nearest-exact")
+
+DEFAULT_STUDIO_SETTINGS = {
+    "llm": {
+        "system_prompt": (
+            "你是一位专业的写实摄影与电影感视觉创作提示词生成助手，擅长将用户的简短创意、主题或分镜要求，转化为结构清晰、细节扎实、光影考究且零前后冲突的纯中文画面提示词，同时具备多轮原位精准改写能力。\n\n"
+            "=== 输出格式规范 ===\n"
+            "每次回复请先在 <核对>...</核对> 标签内做 3 行简短构图与一致性自检（系统会自动剥离核对草稿），随后在 <提示词>...</提示词> 标签内输出一段约 130～180 字、自然连贯、句号收尾的纯中文视觉提示词：\n"
+            "<核对>\n"
+            "1. 构图景别与环境光影：[画幅景别 + 具体空间场景 + 主光源方向、色温与氛围光影]\n"
+            "2. 主体造型与动态神情：[人物或核心主体的外观造型、神态眼神、动作姿态与服装材质纹理]\n"
+            "3. 镜头质感与原位改写检查：[焦段景深与胶片/数码摄影质感；若是修改轮，指明在原句对应位置直接替换且未改动部分原样保留]\n"
+            "</核对>\n"
+            "<提示词>\n"
+            "[输出一整段约 130～180 字细腻写实的纯中文画面描述，不要标题、不要列表编号、不要英文与多余解释，以句号完整收尾]\n"
+            "</提示词>\n\n"
+            "=== 创作与多轮改写准则 ===\n"
+            "1. 细节具象且符合真实光学物理：主动补全合理的环境纵深、自然光线过渡、织物与器物表面肌理、镜头焦段及浅景深虚化层次，避免空洞形容词堆砌。\n"
+            "2. 单一位置集中描写、拒绝重复冲突：同一要素（景别环境、人物神态、手部动作、服饰造型、光影色调）在段落中仅集中描写一次，严禁前后矛盾。\n"
+            "3. 多轮对话原位替换：当用户提出修改意见时，以上一轮 <提示词> 为底稿，仅在对应句子的原位置直接替换修改项，其余未提及的场景与造型细节保持原位不变。"
+        ),
+        "multi_turn_hint": "（多轮修改要求：请以上一版提示词为底稿，仅在对应元素原本所在的句子位置直接做原位替换修改，未要求改动的部分保持原有细节不变，确保全篇连贯自然、无重复与前后冲突。）",
+        "check_prefix": "<think>\n\n</think>\n\n<提示词>\n",
+        "temperature": 0.6,
+        "max_tokens": 1024,
+        "top_p": 0.9,
+        "top_k": 20,
+        "repeat_penalty": 1.05,
+        "strip_terms": [],
+    },
+    "image_prompt": {
+        "enable_clean": True,
+        "strip_regexes": [],
+        "replace_pairs": [],
+        "enable_prefix": False,
+        "zh_prefix": "",
+        "en_prefix": "",
+        "enable_suffix": True,
+        "zh_suffix": "自然真实的环境光影层次与细腻光学景深，画面主体结构准确、材质纹理清晰自然，高解析度摄影画质。",
+        "en_suffix": "Natural ambient lighting and subtle optical depth of field, accurate subject structure and authentic surface textures, high-resolution photographic quality.",
+        "ref_face_prompt": "Keep the exact same subject's facial features and identity from Picture 1, while strictly following this new outfit, pose, expression, and environment (do NOT keep any clothes or background from Picture 1): {prompt}",
+        "ref_scale_w": 768,
+        "ref_scale_h": 1152,
+        "ref_crop_w": 512,
+        "ref_crop_h": 448,
+        "ref_crop_x": 128,
+        "ref_crop_y": 0,
+    },
+    "image_workflow": {
+        "enable_hires": True,
+        "hires_denoise": 0.16,
+        "cfg": 1.0,
+        "sampler_name": "euler",
+        "scheduler": "simple",
+        "upscale_method": "lanczos",
+        "resolutions": {
+            "portrait":  {"s1_w": 1024, "s1_h": 1536, "s2_w": 2048, "s2_h": 3072},
+            "landscape": {"s1_w": 1536, "s1_h": 1024, "s2_w": 3072, "s2_h": 2048},
+            "square":    {"s1_w": 1280, "s1_h": 1280, "s2_w": 2560, "s2_h": 2560},
+        },
+        "step_tiers": {
+            "tier1": {"s1": 8,  "ref": 5},
+            "tier2": {"s1": 12, "ref": 6},
+            "tier3": {"s1": 16, "ref": 8},
+        },
+    },
+}
+
+
+def _align16(v, lo=256, hi=4096):
+    return max(lo, min(hi, int(round(float(v) / 16.0)) * 16))
+
+
+def _deep_merge_settings(base: dict, extra: dict) -> dict:
+    out = copy.deepcopy(base)
+    if not isinstance(extra, dict):
+        return out
+    for k, v in extra.items():
+        if k in out and isinstance(out[k], dict) and isinstance(v, dict):
+            out[k] = _deep_merge_settings(out[k], v)
+        elif k in out:
+            out[k] = copy.deepcopy(v)
+    return out
+
+
+def _settings_path(state_dir=None) -> str:
+    if state_dir is not None:
+        return os.path.join(state_dir, "studio_settings.json")
+    return os.path.join(STATE_DIR, "studio_settings.json")
+
+
+def load_studio_settings(state_dir=None) -> dict:
+    cfg = copy.deepcopy(DEFAULT_STUDIO_SETTINGS)
+    spath = _settings_path(state_dir)
+    if os.path.exists(spath):
+        try:
+            with open(spath, "r", encoding="utf-8") as fh:
+                parsed = json.load(fh)
+            if isinstance(parsed, dict):
+                cfg = _deep_merge_settings(cfg, parsed)
+        except Exception:
+            pass
+    llm = cfg["llm"]
+    if not isinstance(llm.get("system_prompt"), str) or not llm["system_prompt"].strip():
+        llm["system_prompt"] = DEFAULT_STUDIO_SETTINGS["llm"]["system_prompt"]
+    else:
+        llm["system_prompt"] = llm["system_prompt"].strip()
+    if not isinstance(llm.get("multi_turn_hint"), str):
+        llm["multi_turn_hint"] = DEFAULT_STUDIO_SETTINGS["llm"]["multi_turn_hint"]
+    if not isinstance(llm.get("check_prefix"), str):
+        llm["check_prefix"] = DEFAULT_STUDIO_SETTINGS["llm"]["check_prefix"]
+    for fk, lo, hi in (("temperature", 0.0, 2.0), ("top_p", 0.05, 1.0), ("repeat_penalty", 0.8, 2.0)):
+        try:
+            v = llm[fk]
+            if isinstance(v, bool) or not math.isfinite(float(v)):
+                raise ValueError()
+            llm[fk] = round(max(lo, min(hi, float(v))), 4)
+        except Exception:
+            llm[fk] = DEFAULT_STUDIO_SETTINGS["llm"][fk]
+    for ik, lo, hi in (("max_tokens", 128, 8192), ("top_k", 1, 200)):
+        try:
+            v = llm[ik]
+            if isinstance(v, bool):
+                raise ValueError()
+            llm[ik] = max(lo, min(hi, int(v)))
+        except Exception:
+            llm[ik] = DEFAULT_STUDIO_SETTINGS["llm"][ik]
+    if isinstance(llm.get("strip_terms"), list):
+        llm["strip_terms"] = [
+            x.replace("\r", "").replace("\n", "")
+            for x in llm["strip_terms"]
+            if isinstance(x, str) and x.replace("\r", "").replace("\n", "") != ""
+        ]
+    else:
+        llm["strip_terms"] = list(DEFAULT_STUDIO_SETTINGS["llm"]["strip_terms"])
+
+    ip = cfg["image_prompt"]
+    ip["enable_clean"] = bool(ip.get("enable_clean", True))
+    ip["enable_prefix"] = bool(ip.get("enable_prefix", False))
+    ip["enable_suffix"] = bool(ip.get("enable_suffix", True))
+    for sk in ("zh_prefix", "en_prefix", "zh_suffix", "en_suffix", "ref_face_prompt"):
+        if not isinstance(ip.get(sk), str):
+            ip[sk] = DEFAULT_STUDIO_SETTINGS["image_prompt"][sk]
+    if isinstance(ip.get("strip_regexes"), list):
+        ip["strip_regexes"] = [x.strip() for x in ip["strip_regexes"] if isinstance(x, str) and x.strip()]
+    else:
+        ip["strip_regexes"] = list(DEFAULT_STUDIO_SETTINGS["image_prompt"]["strip_regexes"])
+    if isinstance(ip.get("replace_pairs"), list):
+        ip["replace_pairs"] = [
+            {"from": str(it["from"]), "to": str(it.get("to", ""))}
+            for it in ip["replace_pairs"]
+            if isinstance(it, dict) and isinstance(it.get("from"), str) and it["from"] != ""
+        ]
+    else:
+        ip["replace_pairs"] = copy.deepcopy(DEFAULT_STUDIO_SETTINGS["image_prompt"]["replace_pairs"])
+    for pk in ("ref_scale_w", "ref_scale_h", "ref_crop_w", "ref_crop_h"):
+        try:
+            if isinstance(ip[pk], bool):
+                raise ValueError()
+            ip[pk] = _align16(ip[pk])
+        except Exception:
+            ip[pk] = DEFAULT_STUDIO_SETTINGS["image_prompt"][pk]
+    for ok in ("ref_crop_x", "ref_crop_y"):
+        try:
+            if isinstance(ip[ok], bool):
+                raise ValueError()
+            ip[ok] = max(0, min(4096, int(ip[ok])))
+        except Exception:
+            ip[ok] = DEFAULT_STUDIO_SETTINGS["image_prompt"][ok]
+
+    wf = cfg["image_workflow"]
+    wf["enable_hires"] = bool(wf.get("enable_hires", True))
+    for fk, lo, hi in (("hires_denoise", 0.01, 1.0), ("cfg", 0.1, 20.0)):
+        try:
+            v = wf[fk]
+            if isinstance(v, bool) or not math.isfinite(float(v)):
+                raise ValueError()
+            wf[fk] = round(max(lo, min(hi, float(v))), 4)
+        except Exception:
+            wf[fk] = DEFAULT_STUDIO_SETTINGS["image_workflow"][fk]
+    if wf.get("sampler_name") not in VALID_SAMPLERS:
+        wf["sampler_name"] = "euler"
+    if wf.get("scheduler") not in VALID_SCHEDULERS:
+        wf["scheduler"] = "simple"
+    if wf.get("upscale_method") not in VALID_UPSCALE_METHODS:
+        wf["upscale_method"] = "lanczos"
+    if not isinstance(wf.get("resolutions"), dict):
+        wf["resolutions"] = copy.deepcopy(DEFAULT_STUDIO_SETTINGS["image_workflow"]["resolutions"])
+    else:
+        for rk, rdef in DEFAULT_STUDIO_SETTINGS["image_workflow"]["resolutions"].items():
+            rcur = wf["resolutions"].get(rk)
+            if not isinstance(rcur, dict):
+                wf["resolutions"][rk] = dict(rdef)
+            else:
+                for dk in ("s1_w", "s1_h", "s2_w", "s2_h"):
+                    try:
+                        if isinstance(rcur.get(dk), bool):
+                            raise ValueError()
+                        rcur[dk] = _align16(rcur.get(dk, rdef[dk]))
+                    except Exception:
+                        rcur[dk] = rdef[dk]
+    if not isinstance(wf.get("step_tiers"), dict):
+        wf["step_tiers"] = copy.deepcopy(DEFAULT_STUDIO_SETTINGS["image_workflow"]["step_tiers"])
+    else:
+        for tk, tdef in DEFAULT_STUDIO_SETTINGS["image_workflow"]["step_tiers"].items():
+            tcur = wf["step_tiers"].get(tk)
+            if not isinstance(tcur, dict):
+                wf["step_tiers"][tk] = dict(tdef)
+            else:
+                try:
+                    if isinstance(tcur.get("s1"), bool):
+                        raise ValueError()
+                    tcur["s1"] = max(1, min(60, int(tcur.get("s1", tdef["s1"]))))
+                except Exception:
+                    tcur["s1"] = tdef["s1"]
+                try:
+                    if isinstance(tcur.get("ref"), bool):
+                        raise ValueError()
+                    tcur["ref"] = max(0, min(40, int(tcur.get("ref", tdef["ref"]))))
+                except Exception:
+                    tcur["ref"] = tdef["ref"]
+    return cfg
+
+
+COLAB_BIN = os.environ.get("COLAB_BIN") or shutil.which("colab") or "/usr/local/bin/colab"
+DEFAULT_SESSION = os.environ.get("COLAB_SESSION", "ai")
+DEFAULT_GPU = os.environ.get("COLAB_GPU", "G4")
+DEFAULT_TIMEOUT = float(os.environ.get("COLAB_TIMEOUT", "7200"))
+DEFAULT_IDLE_MIN = int(os.environ.get("COLAB_IDLE_MIN", "30"))
+
+MODULES = {
+    "image": "remote_image.py",
+    "video": "remote_video.py",
+    "llm": "remote_llm.py",
+}
+
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+from idle_guard import Guard, IdleError
+
+
+def _resolve_colab_python() -> str:
+    env_py = os.environ.get("COLAB_PYTHON_BIN", "").strip()
+    if env_py and os.path.isfile(env_py):
+        return env_py
+    try:
+        if os.path.isfile(COLAB_BIN):
+            with open(COLAB_BIN, "r", encoding="utf-8", errors="ignore") as fh:
+                first = fh.readline().strip()
+            if first.startswith("#!"):
+                interp = first[2:].strip().split()[0]
+                if os.path.isfile(interp):
+                    return interp
+    except OSError:
+        pass
+    uv_py = os.path.expanduser("~/.local/share/uv/tools/google-colab-cli/bin/python")
+    if os.path.isfile(uv_py):
+        return uv_py
+    return sys.executable
+
+
+def _ensure_tunnel_keypair() -> str:
+    """读取或自动生成本机专属 ${STATE_DIR}/tunnel_ed25519 密钥对，返回私钥 Base64。"""
+    env_b64 = os.environ.get("COLABBB_TUNNEL_KEY_B64", "").strip()
+    if env_b64:
+        return env_b64
+    os.makedirs(STATE_DIR, mode=0o700, exist_ok=True)
+    key_file = os.path.join(STATE_DIR, "tunnel_ed25519")
+    if not os.path.isfile(key_file) and shutil.which("ssh-keygen"):
+        subprocess.run(
+            ["ssh-keygen", "-t", "ed25519", "-N", "", "-C", "colabbb-tunnel", "-f", key_file],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False,
+        )
+        if os.path.isfile(key_file):
+            os.chmod(key_file, 0o600)
+            pub_file = key_file + ".pub"
+            if os.path.isfile(pub_file):
+                pub_line = open(pub_file, "r", encoding="utf-8").read().strip()
+                print(
+                    f'[colab-ai] 已自动生成反向隧道密钥对: {key_file}\n'
+                    f'[colab-ai] 请确保以下受限公钥已加入宿主机 ~/.ssh/authorized_keys:\n'
+                    f'restrict,port-forwarding,command="/bin/false" {pub_line}',
+                    flush=True,
+                )
+    if os.path.isfile(key_file):
+        os.chmod(key_file, 0o600)
+        with open(key_file, "rb") as fh:
+            return base64.b64encode(fh.read()).decode("ascii")
+    return ""
+
+
+def _read_optional_secret(env_name: str, dotfile_name: str) -> str:
+    val = os.environ.get(env_name, "").strip()
+    if val:
+        return val
+    p = os.path.join(STATE_DIR, dotfile_name)
+    if os.path.isfile(p):
+        try:
+            return open(p, "r", encoding="utf-8").read().strip()
+        except OSError:
+            return ""
+    return ""
+
+
+PASSTHROUGH_REMOTE_ENV_PREFIXES = (
+    "COLABBB_IMAGE_",
+    "COLABBB_VIDEO_",
+    "COLABBB_AUDIO_",
+    "COLABBB_LLM_",
+    "COLABBB_COMFY_",
+    "COLABBB_METRICS_",
+)
+
+
+def _build_remote_env_flags(extra_env: dict = None) -> list:
+    env_map = {}
+    tunnel_b64 = _ensure_tunnel_keypair()
+    tunnel_host = os.environ.get("COLABBB_TUNNEL_HOST", "").strip()
+    tunnel_port = os.environ.get("COLABBB_TUNNEL_PORT", "22").strip() or "22"
+    tunnel_user = os.environ.get("COLABBB_TUNNEL_USER", "root").strip() or "root"
+
+    if tunnel_b64:
+        env_map["COLABBB_TUNNEL_KEY_B64"] = tunnel_b64
+    if tunnel_host:
+        env_map["COLABBB_TUNNEL_HOST"] = tunnel_host
+    env_map["COLABBB_TUNNEL_PORT"] = tunnel_port
+    env_map["COLABBB_TUNNEL_USER"] = tunnel_user
+
+    civ_tok = _read_optional_secret("CIVITAI_TOKEN", ".civitai_token")
+    hf_tok = _read_optional_secret("HF_TOKEN", ".hf_token")
+    if civ_tok:
+        env_map["CIVITAI_TOKEN"] = civ_tok
+    if hf_tok:
+        env_map["HF_TOKEN"] = hf_tok
+
+    for k, v in os.environ.items():
+        if v and k.startswith(PASSTHROUGH_REMOTE_ENV_PREFIXES):
+            env_map[k] = v
+
+    if extra_env:
+        for k, v in extra_env.items():
+            if v is not None:
+                env_map[k] = str(v)
+
+    flags = []
+    for k, v in env_map.items():
+        flags.extend(["--env", f"{k}={v}"])
+    return flags
+
+
+def idle_guard(session=None):
+    return Guard(STATE_DIR, session or DEFAULT_SESSION)
+
+
+def _local_endpoint(session):
+    try:
+        with open(os.path.expanduser("~/.config/colab-cli/sessions.json")) as fh:
+            value = json.load(fh).get(session, {}).get("endpoint")
+        return value if isinstance(value, str) and re.fullmatch(r"(?:gpu|cpu|tpu)-[A-Za-z0-9_-]{1,160}", value) else None
+    except (OSError, ValueError, TypeError, AttributeError):
+        return None
+
+
+def _lifecycle_event(event, **fields):
+    try:
+        record = dict(ts=time.time(), pid=os.getpid(), event=event, **fields)
+        print("[lifecycle-audit] " + json.dumps(record, ensure_ascii=True), file=sys.stderr, flush=True)
+    except (OSError, ValueError, TypeError):
+        pass
+
+
+KERNEL_KEEPALIVE_COOLDOWN = 240
+
+
+def _keepalive_paths(session: str):
+    key = hashlib.sha256((session or DEFAULT_SESSION).encode("utf-8")).hexdigest()
+    return (
+        os.path.join(STATE_DIR, f"kernel-keepalive-{key}.lock"),
+        os.path.join(STATE_DIR, f"kernel-keepalive-{key}.json"),
+        os.path.join(STATE_DIR, f"idle-{key}.log"),
+    )
+
+
+def _keepalive_due(session: str, cooldown_sec: int = KERNEL_KEEPALIVE_COOLDOWN) -> bool:
+    _, state_p, _ = _keepalive_paths(session)
+    try:
+        st = json.load(open(state_p, "r", encoding="utf-8"))
+        boot = open("/proc/sys/kernel/random/boot_id").read().strip()
+        now_m = time.monotonic()
+        if st.get("boot") == boot and isinstance(st.get("mono"), (int, float)) and 0 <= now_m - st["mono"] < cooldown_sec:
+            return False
+    except Exception:
+        pass
+    return True
+
+
+def _write_keepalive_stamp(session: str, endpoint: str, status: str):
+    _, state_p, _ = _keepalive_paths(session)
+    try:
+        boot = open("/proc/sys/kernel/random/boot_id").read().strip()
+        payload = {"boot": boot, "mono": time.monotonic(), "ts": time.time(), "endpoint": endpoint, "status": status}
+        tmp_p = state_p + ".tmp"
+        with open(tmp_p, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh)
+        os.replace(tmp_p, state_p)
+    except Exception:
+        pass
+
+
+def trigger_async_kernel_keepalive(session: str = None):
+    session = session or DEFAULT_SESSION
+    if not _keepalive_due(session, KERNEL_KEEPALIVE_COOLDOWN):
+        return
+    try:
+        guard = idle_guard(session)
+        gen = guard.generation()
+        _, _, log_p = _keepalive_paths(session)
+        os.makedirs(STATE_DIR, mode=0o700, exist_ok=True)
+        with open(log_p, "a", encoding="utf-8") as lf:
+            subprocess.Popen(
+                [sys.executable, os.path.realpath(__file__), "_kernel_keepalive", session, gen],
+                stdout=lf, stderr=lf, start_new_session=True,
+            )
+    except Exception:
+        pass
+
+
+def cmd_kernel_keepalive(session: str, expected_gen: str = None, cooldown_sec: int = KERNEL_KEEPALIVE_COOLDOWN):
+    session = session or DEFAULT_SESSION
+    os.makedirs(STATE_DIR, mode=0o700, exist_ok=True)
+    lock_p, _, _ = _keepalive_paths(session)
+    with open(lock_p, "a+") as lk:
+        try:
+            fcntl.flock(lk.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return
+        guard = idle_guard(session)
+        with guard.gate():
+            if expected_gen is not None and expected_gen != guard.generation():
+                return
+            try:
+                data = guard.read(repair=False)
+            except IdleError:
+                return
+            limit = data.get("limit", 3600)
+            if data.get("phase") != "running" or limit <= 0 or guard.now() - data["last"] >= limit:
+                return
+        if not _keepalive_due(session, cooldown_sec):
+            return
+        helper_code = (
+            "import json, sys, requests\n"
+            "from colab_cli.common import state\n"
+            "from colab_cli.runtime import ColabRuntime\n"
+            "sess_name = sys.argv[1]\n"
+            "assignments = state.client.list_assignments()\n"
+            "if not assignments:\n"
+            "    print('KA_RESULT=empty')\n"
+            "    raise SystemExit(0)\n"
+            "by_ep = {a.endpoint: a for a in assignments}\n"
+            "cur = state.store.get(sess_name)\n"
+            "target = by_ep.get(cur.endpoint) if (cur and cur.endpoint in by_ep) else None\n"
+            "if target is None:\n"
+            "    for a in assignments:\n"
+            "        if a.accelerator.value.upper() == 'G4':\n"
+            "            target = a\n"
+            "            break\n"
+            "    if target is None:\n"
+            "        target = assignments[0]\n"
+            "url = target.runtime_proxy_info.url\n"
+            "tok = target.runtime_proxy_info.token\n"
+            "ep = target.endpoint\n"
+            "if cur and cur.endpoint == ep:\n"
+            "    cur.token = tok\n"
+            "    cur.url = url\n"
+            "    cur.token_expires_at = target.runtime_proxy_info.expires_at()\n"
+            "    state.store.add(cur)\n"
+            "hdrs = {'X-Colab-Client-Agent': 'colab-cli', 'X-Colab-Runtime-Proxy-Token': tok}\n"
+            "r = requests.get(f'{url}/api/kernels', headers=hdrs, timeout=10)\n"
+            "r.raise_for_status()\n"
+            "ks = r.json()\n"
+            "if ks and any(k.get('execution_state') != 'idle' for k in ks):\n"
+            "    print(f'KA_RESULT=busy_active:{ep}')\n"
+            "    raise SystemExit(0)\n"
+            "kid = ks[0]['id'] if ks else (cur.kernel_id if cur and cur.endpoint == ep else None)\n"
+            "rt = ColabRuntime(url, tok, kernel_id=kid)\n"
+            "try:\n"
+            "    rt.execute_code('1+1', timeout=15)\n"
+            "    if cur and cur.endpoint == ep and rt.kernel_id and cur.kernel_id != rt.kernel_id:\n"
+            "        cur.kernel_id = rt.kernel_id\n"
+            "        state.store.add(cur)\n"
+            "finally:\n"
+            "    rt.stop()\n"
+            "print(f'KA_RESULT=refreshed:{ep}')\n"
+        )
+        try:
+            res = subprocess.run(
+                [_resolve_colab_python(), "-c", helper_code, session],
+                capture_output=True, text=True, timeout=30,
+            )
+            out_lines = [ln.strip() for ln in (res.stdout or "").splitlines() if ln.startswith("KA_RESULT=")]
+            if res.returncode == 0 and out_lines:
+                val = out_lines[-1].split("=", 1)[1]
+                parts = val.split(":", 1)
+                st_name = parts[0]
+                ep_name = parts[1] if len(parts) > 1 else ""
+                if st_name in ("refreshed", "busy_active"):
+                    _write_keepalive_stamp(session, ep_name, st_name)
+                _lifecycle_event("kernel_keepalive", status=st_name, endpoint=ep_name)
+            else:
+                _lifecycle_event("kernel_keepalive", status="error", returncode=res.returncode)
+        except Exception as exc:
+            _lifecycle_event("kernel_keepalive", status="exception", error_type=type(exc).__name__)
+
+
+def touch_activity():
+    idle_guard().touch()
+
+
+def start_idle_watcher(session: str, idle_minutes: int):
+    idle_guard(session).ensure_watcher(os.path.realpath(__file__), idle_minutes)
+
+
+def idle_work(func):
+    def protected(*args, **kwargs):
+        session = kwargs.get("session") or (args[0] if func.__name__ == "ensure_session" else args[2])
+        try:
+            with idle_guard(session).lease(os.environ.get("COLAB_AI_GENERATION")):
+                return func(*args, **kwargs)
+        except IdleError as exc:
+            raise SystemExit("[idle] " + str(exc)) from None
+    return protected
+
+
+@contextmanager
+def session_start_lock(session: str, timeout=None):
+    os.makedirs(STATE_DIR, mode=0o700, exist_ok=True)
+    key = hashlib.sha256(session.encode("utf-8")).hexdigest()
+    path = os.path.join(STATE_DIR, f"session-start-{key}.lock")
+    with open(path, "a+") as lock:
+        if timeout is None:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        else:
+            deadline = time.monotonic() + timeout
+            while True:
+                try:
+                    fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() >= deadline:
+                        raise IdleError("session transition lock timed out; shutdown unconfirmed")
+                    time.sleep(0.05)
+        try:
+            yield lock
+        finally:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
+
+def _set_start_pending(lock, pending: bool):
+    lock.seek(0)
+    lock.truncate()
+    if pending:
+        lock.write("NEW_UNCONFIRMED\n")
+    lock.flush()
+    os.fsync(lock.fileno())
+
+
+def auto_attach_remote_session(session: str) -> bool:
+    with session_start_lock(session) as lock:
+        attached = _auto_attach_remote_session_locked(session)
+        if attached:
+            _set_start_pending(lock, False)
+            start_idle_watcher(session, DEFAULT_IDLE_MIN)
+        return attached
+
+
+def _auto_attach_remote_session_locked(session: str) -> bool:
+    code = f'''
+from colab_cli.common import state
+from colab_cli.state import SessionState
+import json
+
+assignments = state.client.list_assignments()
+if not isinstance(assignments, list):
+    raise RuntimeError("Invalid assignments response")
+print("COLAB_AI_ASSIGNMENTS_JSON=" + json.dumps([a.endpoint for a in assignments]), flush=True)
+if not assignments:
+    print("COLAB_AI_ASSIGNMENTS_EMPTY")
+    raise SystemExit(3)
+
+by_ep = {{a.endpoint: a for a in assignments}}
+cur = state.store.get({session!r})
+if cur and cur.endpoint in by_ep:
+    a = by_ep[cur.endpoint]
+    cur.token = a.runtime_proxy_info.token
+    cur.url = a.runtime_proxy_info.url
+    cur.token_expires_at = a.runtime_proxy_info.expires_at()
+    state.store.add(cur)
+    print(f"ATTACHED:{{cur.endpoint}}:{{cur.accelerator}}")
+    raise SystemExit(0)
+
+target = None
+for a in assignments:
+    if a.accelerator.value.upper() == "G4":
+        target = a
+        break
+if target is None:
+    target = assignments[0]
+
+s = SessionState(
+    name={session!r},
+    token=target.runtime_proxy_info.token,
+    url=target.runtime_proxy_info.url,
+    endpoint=target.endpoint,
+    token_expires_at=target.runtime_proxy_info.expires_at(),
+    variant=target.variant.name,
+    accelerator=target.accelerator.value,
+    machine_shape=target.machine_shape.name,
+)
+state.store.add(s)
+print(f"ATTACHED:{{s.endpoint}}:{{s.accelerator}}")
+'''
+    old_endpoint = _local_endpoint(session)
+    _lifecycle_event("assignment_query_begin", old_endpoint=old_endpoint)
+    try:
+        res = subprocess.run(
+            [_resolve_colab_python(), "-c", code],
+            capture_output=True, text=True, timeout=15,
+        )
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        _lifecycle_event("assignment_query_end", result="error", old_endpoint=old_endpoint, error_type=type(exc).__name__)
+        raise SystemExit("[colab-ai] 状态查询失败：远端会话查询超时或无法运行；未确认无实例，拒绝创建。") from None
+    lines = (res.stdout or "").splitlines()
+    endpoints = None
+    for line in lines:
+        if line.startswith("COLAB_AI_ASSIGNMENTS_JSON="):
+            try:
+                candidate = json.loads(line.split("=", 1)[1])
+                if isinstance(candidate, list) and all(isinstance(ep, str) and re.fullmatch(r"(?:gpu|cpu|tpu)-[A-Za-z0-9_-]{1,160}", ep) for ep in candidate):
+                    endpoints = candidate
+            except (TypeError, ValueError):
+                pass
+    _lifecycle_event(
+        "assignment_query_end",
+        old_endpoint=old_endpoint,
+        endpoints=endpoints,
+        result=("empty" if not endpoints else "nonempty") if endpoints is not None else "error",
+        returncode=res.returncode,
+    )
+    if res.returncode == 3 and lines and lines[-1] == "COLAB_AI_ASSIGNMENTS_EMPTY":
+        return False
+    if res.returncode == 0:
+        attached = [x for x in lines if x.startswith("ATTACHED:")]
+        if attached:
+            parts = attached[-1].split(":", 2)
+            if len(parts) == 3 and parts[1] and parts[2]:
+                _, ep, acc = parts
+                _lifecycle_event("session_decision", decision="reuse", old_endpoint=old_endpoint, endpoint=ep)
+                print(f"[colab-ai] 已自动识别并接管远端活跃实例 [{session}] -> {ep} (GPU: {acc})", flush=True)
+                return True
+    raise SystemExit("[colab-ai] 状态查询失败：远端会话查询/绑定失败或响应无效；未确认无实例，拒绝创建。")
+
+
+def _is_tunnel_live(port: int) -> bool:
+    try:
+        url = f"http://127.0.0.1:{port}/health" if port == LLM_TUNNEL_PORT else f"http://127.0.0.1:{port}/system_stats"
+        urllib.request.urlopen(url, timeout=1.0).read()
+        return True
+    except Exception:
+        return False
+
+
+def has_active_session(session: str) -> bool:
+    if _is_tunnel_live(COMFY_TUNNEL_PORT) or _is_tunnel_live(LLM_TUNNEL_PORT):
+        start_idle_watcher(session, DEFAULT_IDLE_MIN)
+        return True
+    return auto_attach_remote_session(session)
+
+
+def ensure_port_proxy():
+    """可选 ComfyUI 端口转发：仅在显式启用且端口未被 systemd 监听时后台拉起。"""
+    enabled = os.environ.get("COLABBB_ENABLE_COMFY_PROXY", "").strip().lower() in ("1", "true", "yes", "on")
+    if not enabled and not os.path.exists(os.path.join(STATE_DIR, "enable_comfy_proxy")):
+        return
+    proxy_port = int(os.environ.get("COLABBB_COMFY_PROXY_PORT", "18188"))
+    try:
+        with socket.create_connection(("127.0.0.1", proxy_port), timeout=0.4):
+            return
+    except OSError:
+        pass
+    proxy_script = os.path.join(BASE_DIR, "optional", "comfy-proxy", "comfy_port_proxy.py")
+    if not os.path.isfile(proxy_script):
+        return
+    pid_f = os.path.join(STATE_DIR, "proxy.pid")
+    if os.path.exists(pid_f):
+        try:
+            pid = int(open(pid_f).read().strip())
+            os.kill(pid, 0)
+            return
+        except Exception:
+            pass
+    proc = subprocess.Popen(
+        [sys.executable, proxy_script],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True,
+    )
+    os.makedirs(STATE_DIR, mode=0o700, exist_ok=True)
+    open(pid_f, "w").write(str(proc.pid))
+
+
+@idle_work
+def ensure_session(session: str, gpu: str, idle_min: int, allow_create: bool = True):
+    _check_generation()
+    touch_activity()
+    ensure_port_proxy()
+    with session_start_lock(session) as lock:
+        _check_generation()
+        if _auto_attach_remote_session_locked(session):
+            _set_start_pending(lock, False)
+            start_idle_watcher(session, idle_min)
+            return
+        if not allow_create:
+            _lifecycle_event("session_decision", decision="refuse_create", old_endpoint=_local_endpoint(session))
+            raise SystemExit("[colab-ai] 当前未开机，请先开机。")
+        lock.seek(0)
+        if lock.read().strip():
+            raise SystemExit("[colab-ai] 上次创建结果尚未确认且远端仍为空；拒绝再次创建，请先核实远端状态。")
+        _check_generation()
+        _set_start_pending(lock, True)
+        _lifecycle_event("session_decision", decision="new", old_endpoint=_local_endpoint(session))
+        print(f"[colab-ai] 正在开启 Colab {gpu} 实例 (session={session})...", flush=True)
+        try:
+            env = dict(os.environ, COLAB_CLI_ASSIGN_RETRIES="0")
+            subprocess.run([COLAB_BIN, "new", "-s", session, "--gpu", gpu], check=True, env=env)
+        except (subprocess.SubprocessError, OSError) as exc:
+            _lifecycle_event("new_call_end", result="unconfirmed", error_type=type(exc).__name__, endpoint=_local_endpoint(session))
+            start_idle_watcher(session, idle_min)
+            raise SystemExit("[colab-ai] 创建结果未确认；已保留启动保护，禁止盲目再次创建。") from None
+        _lifecycle_event("new_call_end", result="returned_success", endpoint=_local_endpoint(session))
+        start_idle_watcher(session, idle_min)
+        ready = False
+        for _attempt in range(8):
+            time.sleep(2.5)
+            if not _auto_attach_remote_session_locked(session):
+                continue
+            _set_start_pending(lock, False)
+            start_idle_watcher(session, idle_min)
+            _rdy_p = os.path.join(STATE_DIR, "kernel-ready-" + hashlib.sha256(session.encode()).hexdigest() + ".py")
+            with open(_rdy_p, "w") as fh:
+                fh.write("print('KERNEL_READY')\n")
+            try:
+                probe = subprocess.run(
+                    [COLAB_BIN, "exec", "-s", session, "--timeout", "15", "-f", _rdy_p],
+                    text=True, capture_output=True, timeout=25,
+                )
+            except subprocess.TimeoutExpired:
+                continue
+            if probe.returncode == 0 and "KERNEL_READY" in (probe.stdout or ""):
+                ready = True
+                try:
+                    _mp = os.path.join(BASE_DIR, "remote_metrics.py")
+                    if os.path.isfile(_mp):
+                        m_cmd = [COLAB_BIN, "exec", "-s", session, "--timeout", "20"] + _build_remote_env_flags() + ["-f", _mp]
+                        subprocess.Popen(m_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                except Exception:
+                    pass
+                break
+        start_idle_watcher(session, idle_min)
+        if not ready:
+            raise SystemExit("[colab-ai] 实例已创建，但 Kernel 就绪探测耗尽；未就绪，不会再次创建。")
+        print(f"[colab-ai] {gpu} 已就绪（已启用 {idle_min} 分钟闲置自动关机保护）。", flush=True)
+
+
+def prepare_remote_args(module: str, raw_args: list, session: str) -> list:
+    file_flags = {"--input", "-i", "--prompt-file", "-f", "--messages-file", "--system-file", "--text-file", "--workflow", "-w", "--image", "--ref-image"}
+    new_args = []
+    i = 0
+    while i < len(raw_args):
+        arg = raw_args[i]
+        if arg == "--out-file" and i + 1 < len(raw_args):
+            i += 2
+            continue
+        if arg == "--ephemeral-draft":
+            i += 1
+            continue
+        if arg in file_flags and i + 1 < len(raw_args):
+            local_p = raw_args[i + 1]
+            remote_p = maybe_upload_file(module, local_p, session)
+            new_args.extend([arg, remote_p])
+            i += 2
+            continue
+        new_args.append(arg)
+        i += 1
+    return new_args
+
+
+def maybe_upload_file(module: str, local_path: str, session: str) -> str:
+    if not os.path.isfile(local_path):
+        return local_path
+    upload_src = local_path
+    remote_path = f"/content/inputs/{os.path.basename(upload_src)}"
+    mk_p = os.path.join(STATE_DIR, "mkdir-inputs.py")
+    os.makedirs(STATE_DIR, mode=0o700, exist_ok=True)
+    with open(mk_p, "w", encoding="utf-8") as _mfh:
+        _mfh.write("import os; os.makedirs('/content/inputs', exist_ok=True)\n")
+    for _up_try in range(3):
+        _check_generation()
+        try:
+            auto_attach_remote_session(session)
+            subprocess.run([COLAB_BIN, "exec", "-s", session, "--timeout", "20", "-f", mk_p], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
+            print(f"[colab-ai] 正在上传输入文件: {upload_src} -> {remote_path}", flush=True)
+            up_res = subprocess.run([COLAB_BIN, "upload", "-s", session, upload_src, remote_path], timeout=90)
+            if up_res.returncode == 0:
+                break
+        except subprocess.TimeoutExpired:
+            print(f"[colab-ai] 上传通道响应超时，自动重试 ({_up_try+1}/3)...", flush=True)
+        time.sleep(3)
+    else:
+        raise SystemExit(1)
+    return remote_path
+
+
+def _try_direct_tunnel_llm(mod_args: list) -> bool:
+    if "--warmup-only" in mod_args:
+        return False
+    try:
+        r = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{LLM_TUNNEL_PORT}/health", timeout=1.5).read().decode())
+        if not (r.get("ok") and r.get("loaded")):
+            return False
+    except Exception:
+        return False
+
+    p = argparse.ArgumentParser()
+    p.add_argument("prompt_pos", nargs="*")
+    p.add_argument("--prompt", "-p", default="")
+    p.add_argument("--prompt-file", "-f", default="")
+    p.add_argument("--messages-file", default="")
+    p.add_argument("--system", "-s", default="")
+    p.add_argument("--system-file", default="")
+    p.add_argument("--out-file", default="")
+    p.add_argument("--ephemeral-draft", action="store_true")
+    p.add_argument("--model", "-m", default="qwen27b")
+    p.add_argument("--max-tokens", type=int, default=None)
+    p.add_argument("--temperature", type=float, default=None)
+    args, _ = p.parse_known_args(mod_args)
+
+    if args.messages_file and os.path.exists(args.messages_file):
+        work_msgs = json.load(open(args.messages_file, "r", encoding="utf-8"))
+    else:
+        prompt = args.prompt or " ".join(args.prompt_pos).strip()
+        if args.prompt_file and os.path.exists(args.prompt_file):
+            prompt = open(args.prompt_file, "r", encoding="utf-8").read().strip()
+        work_msgs = [{"role": "user", "content": prompt}]
+
+    sys_override = args.system.strip() if args.system else ""
+    if args.system_file and os.path.exists(args.system_file):
+        sys_override = open(args.system_file, "r", encoding="utf-8").read().strip()
+
+    llm_cfg = load_studio_settings()["llm"]
+    m_key = "qwen27b"
+    payload = {
+        "model": m_key,
+        "messages": work_msgs,
+        "system": sys_override if sys_override else llm_cfg["system_prompt"],
+        "temperature": args.temperature if args.temperature is not None else llm_cfg["temperature"],
+        "max_tokens": args.max_tokens if args.max_tokens is not None else llm_cfg["max_tokens"],
+        "top_p": llm_cfg["top_p"],
+        "top_k": llm_cfg["top_k"],
+        "repeat_penalty": llm_cfg["repeat_penalty"],
+        "multi_turn_hint": llm_cfg["multi_turn_hint"],
+        "check_prefix": llm_cfg["check_prefix"],
+        "strip_terms": llm_cfg["strip_terms"],
+    }
+
+    print(f"[llm] 正在通过极速隧道调用 {m_key} (127.0.0.1:{LLM_TUNNEL_PORT})...", flush=True)
+    _check_generation()
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{LLM_TUNNEL_PORT}/generate",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    resp = json.loads(urllib.request.urlopen(req, timeout=300).read().decode("utf-8"))
+    reply = (resp.get("reply") or "").strip()
+    ntok = int(resp.get("tokens", 0))
+    dt = float(resp.get("elapsed", 0.0))
+    tok_s = resp.get("tok_per_s", 0.0)
+
+    print(f"\n================ 提示词大师回复 ================\n{reply}\n================================================ ({ntok} tokens, {dt}s, {tok_s} tok/s)", flush=True)
+    if args.out_file:
+        os.makedirs(os.path.dirname(os.path.abspath(args.out_file)), exist_ok=True)
+        with open(args.out_file, "w", encoding="utf-8") as fh:
+            fh.write(reply + "\n")
+    if not args.ephemeral_draft:
+        local_out_dir = os.path.join(OUT_ROOT, "llm")
+        os.makedirs(local_out_dir, exist_ok=True)
+        lpath = os.path.join(local_out_dir, f"llm_{int(time.time()*1000)%1000000000}.md")
+        with open(lpath, "w", encoding="utf-8") as fh:
+            fh.write(reply + "\n")
+        print(f"[colab-ai] 已回传至宿主机本地: {lpath}", flush=True)
+    elif args.out_file:
+        print(f"[colab-ai] 已回传至宿主机本地: {args.out_file}", flush=True)
+    return True
+
+
+def _clean_prompt_terms_local(prompt: str, img_prompt_cfg: dict = None) -> str:
+    p = prompt.strip()
+    cfg = img_prompt_cfg if isinstance(img_prompt_cfg, dict) else load_studio_settings()["image_prompt"]
+    if not cfg.get("enable_clean", True):
+        return p
+    for rx in (cfg.get("strip_regexes") or []):
+        if isinstance(rx, str) and rx:
+            try:
+                p = re.sub(rx, "。", p)
+            except re.error as exc:
+                print(f"[image] 忽略无效的清理正则 {rx!r}: {exc}", flush=True)
+    for pair in (cfg.get("replace_pairs") or []):
+        if isinstance(pair, dict):
+            old_s = pair.get("from", "")
+            new_s = pair.get("to", "")
+            if isinstance(old_s, str) and old_s and isinstance(new_s, str):
+                p = p.replace(old_s, new_s)
+    return p.strip()
+
+
+def _apply_prompt_affixes_local(prompt: str, img_prompt_cfg: dict = None) -> str:
+    cfg = img_prompt_cfg if isinstance(img_prompt_cfg, dict) else load_studio_settings()["image_prompt"]
+    p = _clean_prompt_terms_local((prompt or "").lstrip("-# \n\r\t").strip(), cfg)
+    if not p:
+        return ""
+    has_zh = bool(re.search(r"[\u4e00-\u9fff]", p))
+    if cfg.get("enable_prefix", False):
+        pref = ((cfg.get("zh_prefix") if has_zh else cfg.get("en_prefix")) or "").strip()
+        if pref and not p.startswith(pref):
+            if has_zh:
+                sep = "" if pref[-1] in "，。；、：,.;:" else "，"
+                p = f"{pref}{sep}{p}"
+            else:
+                sep = " " if pref[-1] in ",.;:" else ", "
+                p = f"{pref}{sep}{p}"
+    if cfg.get("enable_suffix", True):
+        if has_zh:
+            zh_suf = (cfg.get("zh_suffix") or "").strip()
+            if zh_suf and zh_suf not in p:
+                p = p.rstrip("。 ") + "。" + zh_suf.lstrip("。 ")
+        else:
+            en_suf = (cfg.get("en_suffix") or "").strip()
+            if en_suf and en_suf.lower() not in p.lower():
+                p = p.rstrip(". ") + ". " + en_suf.lstrip(". ")
+    return p
+
+
+def _format_ref_face_prompt(clean_p: str, img_prompt_cfg: dict) -> str:
+    tpl = (img_prompt_cfg.get("ref_face_prompt") or "").strip()
+    if not tpl:
+        return clean_p
+    if "{prompt}" in tpl:
+        return tpl.replace("{prompt}", clean_p)
+    return f"{tpl.rstrip()} {clean_p}"
+
+
+def _resolve_res_and_steps(wf_cfg: dict, width: int, height: int, raw_steps: int, res_mode: str = "", step_tier: str = ""):
+    rm = (res_mode or "").strip().lower()
+    if rm not in ("portrait", "landscape", "square"):
+        if height > width:
+            rm = "portrait"
+        elif width > height:
+            rm = "landscape"
+        else:
+            rm = "square"
+    rcfg = wf_cfg["resolutions"][rm]
+    s1_w, s1_h = int(rcfg["s1_w"]), int(rcfg["s1_h"])
+    s2_w, s2_h = int(rcfg["s2_w"]), int(rcfg["s2_h"])
+
+    enable_hires = bool(wf_cfg.get("enable_hires", True))
+    st = (step_tier or "").strip().lower()
+    if st not in ("tier1", "tier2", "tier3"):
+        tiers = wf_cfg["step_tiers"]
+        def _tot(tk):
+            t = tiers[tk]
+            return int(t["s1"]) + (int(t["ref"]) if enable_hires and int(t["ref"]) > 0 else 0)
+        if raw_steps <= 0 or raw_steps == _tot("tier2"):
+            st = "tier2"
+        elif raw_steps == _tot("tier1"):
+            st = "tier1"
+        elif raw_steps == _tot("tier3"):
+            st = "tier3"
+        elif raw_steps <= 13:
+            st = "tier1"
+        elif raw_steps <= 18:
+            st = "tier2"
+        else:
+            st = "tier3"
+    tcfg = wf_cfg["step_tiers"][st]
+    s1_steps = int(tcfg["s1"])
+    ref_steps = int(tcfg["ref"])
+    use_hires = enable_hires and ref_steps > 0
+    total_steps = (s1_steps + ref_steps) if use_hires else s1_steps
+    return s1_w, s1_h, s2_w, s2_h, s1_steps, ref_steps, total_steps, use_hires
+
+
+def build_tunnel_image_workflow(unet_file: str, raw_prompt: str, width: int, height: int, raw_steps: int, guidance: float, seed: int, uploaded_refs=None, settings: dict = None, res_mode: str = "", step_tier: str = ""):
+    cur_settings = settings if isinstance(settings, dict) else load_studio_settings()
+    ip = cur_settings["image_prompt"]
+    wf_cfg = cur_settings["image_workflow"]
+    prompt = _apply_prompt_affixes_local(raw_prompt, ip)
+    s1_w, s1_h, s2_w, s2_h, s1_steps, ref_steps, total_steps, use_hires = _resolve_res_and_steps(
+        wf_cfg, width, height, raw_steps, res_mode=res_mode, step_tier=step_tier
+    )
+    cfg = float(guidance) if guidance and guidance > 0 else float(wf_cfg.get("cfg", 1.0))
+    sampler_name = wf_cfg.get("sampler_name", "euler")
+    scheduler = wf_cfg.get("scheduler", "simple")
+    upscale_method = wf_cfg.get("upscale_method", "lanczos")
+    hires_denoise = float(wf_cfg.get("hires_denoise", 0.16))
+
+    init_w, init_h = (s1_w, s1_h) if use_hires else (s2_w, s2_h)
+    wf3k = {
+        "10": {"class_type": "UNETLoader", "inputs": {"unet_name": unet_file, "weight_dtype": "default"}},
+        "11": {"class_type": "CLIPLoader", "inputs": {"clip_name": IMAGE_CLIP_FILE, "type": IMAGE_CLIP_TYPE, "device": "default"}},
+        "12": {"class_type": "VAELoader", "inputs": {"vae_name": IMAGE_VAE_FILE}},
+        "5": {"class_type": "EmptyLatentImage", "inputs": {"width": init_w, "height": init_h, "batch_size": 1}},
+    }
+
+    uploaded_refs = list(uploaded_refs or [])
+    if uploaded_refs:
+        face_p = _format_ref_face_prompt(prompt, ip)
+        edit_inputs = {"clip": ["11", 0], "prompt": face_p}
+        scale_w = int(ip.get("ref_scale_w", 768))
+        scale_h = int(ip.get("ref_scale_h", 1152))
+        crop_w = int(ip.get("ref_crop_w", 512))
+        crop_h = int(ip.get("ref_crop_h", 448))
+        crop_x = int(ip.get("ref_crop_x", 128))
+        crop_y = int(ip.get("ref_crop_y", 0))
+        for idx, rname in enumerate(uploaded_refs, start=1):
+            nid_load = str(100 + idx)
+            nid_scale = str(110 + idx)
+            nid_crop = str(120 + idx)
+            wf3k[nid_load] = {"class_type": "LoadImage", "inputs": {"image": rname}}
+            wf3k[nid_scale] = {"class_type": "ImageScale", "inputs": {"image": [nid_load, 0], "upscale_method": "lanczos", "width": scale_w, "height": scale_h, "crop": "center"}}
+            wf3k[nid_crop] = {"class_type": "ImageCrop", "inputs": {"image": [nid_scale, 0], "width": crop_w, "height": crop_h, "x": crop_x, "y": crop_y}}
+            edit_inputs[f"image{idx}"] = [nid_crop, 0]
+        wf3k["52"] = {"class_type": "TextEncodeQwenImageEditPlus", "inputs": edit_inputs}
+        wf3k["13"] = {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["52", 0]}}
+        pos_node = "52"
+    else:
+        wf3k["6"] = {"class_type": "CLIPTextEncode", "inputs": {"clip": ["11", 0], "text": prompt}}
+        wf3k["13"] = {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["6", 0]}}
+        pos_node = "6"
+
+    wf3k["3"] = {
+        "class_type": "KSampler",
+        "inputs": {
+            "model": ["10", 0], "positive": [pos_node, 0], "negative": ["13", 0],
+            "latent_image": ["5", 0], "seed": seed, "steps": s1_steps,
+            "cfg": cfg, "sampler_name": sampler_name, "scheduler": scheduler, "denoise": 1.0,
+        },
+    }
+    wf3k["8"] = {"class_type": "VAEDecode", "inputs": {"samples": ["3", 0], "vae": ["12", 0]}}
+    if use_hires:
+        wf3k["20"] = {"class_type": "ImageScale", "inputs": {"image": ["8", 0], "upscale_method": upscale_method, "width": s2_w, "height": s2_h, "crop": "disabled"}}
+        wf3k["21"] = {"class_type": "VAEEncode", "inputs": {"pixels": ["20", 0], "vae": ["12", 0]}}
+        wf3k["22"] = {
+            "class_type": "KSampler",
+            "inputs": {
+                "model": ["10", 0], "positive": [pos_node, 0], "negative": ["13", 0],
+                "latent_image": ["21", 0], "seed": seed + 1, "steps": ref_steps,
+                "cfg": cfg, "sampler_name": sampler_name, "scheduler": scheduler, "denoise": hires_denoise,
+            },
+        }
+        wf3k["23"] = {"class_type": "VAEDecode", "inputs": {"samples": ["22", 0], "vae": ["12", 0]}}
+        wf3k["29"] = {"class_type": "SaveImage", "inputs": {"images": ["23", 0], "filename_prefix": "img3k"}}
+    else:
+        wf3k["29"] = {"class_type": "SaveImage", "inputs": {"images": ["8", 0], "filename_prefix": "img3k"}}
+    return wf3k, s2_w, s2_h, total_steps, s1_steps, ref_steps, use_hires
+
+
+def _upload_image_to_comfy_tunnel(local_path: str) -> str:
+    _check_generation()
+    boundary = "----ComfyUp" + uuid.uuid4().hex
+    fname = f"ref_{int(time.time()*1000)}_{os.path.basename(local_path)}"
+    ctype = mimetypes.guess_type(local_path)[0] or "image/jpeg"
+    body = bytearray()
+    body.extend(f"--{boundary}\r\n".encode())
+    body.extend(b'Content-Disposition: form-data; name="overwrite"\r\n\r\ntrue\r\n')
+    body.extend(f"--{boundary}\r\n".encode())
+    body.extend(f'Content-Disposition: form-data; name="image"; filename="{fname}"\r\nContent-Type: {ctype}\r\n\r\n'.encode())
+    with open(local_path, "rb") as fh:
+        body.extend(fh.read())
+    body.extend(f"\r\n--{boundary}--\r\n".encode())
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{COMFY_TUNNEL_PORT}/upload/image",
+        data=bytes(body),
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+    )
+    res = json.loads(urllib.request.urlopen(req, timeout=20).read().decode())
+    return res["name"]
+
+
+def _submit_comfy_tunnel(wf: dict, label: str, prefix: str, width: int, height: int, steps: int, seed: int, out_subdir: str = "image", ext: str = ".png") -> str:
+    t0 = time.time()
+    payload = json.dumps({"prompt": wf}).encode("utf-8")
+    _check_generation()
+    req = urllib.request.Request(f"http://127.0.0.1:{COMFY_TUNNEL_PORT}/prompt", data=payload, headers={"Content-Type": "application/json"})
+    resp = json.loads(urllib.request.urlopen(req, timeout=20).read().decode())
+    prompt_id = resp["prompt_id"]
+    print(f"[{out_subdir}] 已通过并行隧道提交 {label} 任务 (prompt_id={prompt_id}, {width}x{height}, steps={steps})...", flush=True)
+    while True:
+        _check_generation()
+        time.sleep(0.35)
+        hist = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{COMFY_TUNNEL_PORT}/history/{prompt_id}", timeout=15).read().decode())
+        if prompt_id in hist:
+            entry = hist[prompt_id]
+            status = entry.get("status", {})
+            if status.get("status_str") == "error":
+                raise SystemExit(f"[colab-ai] ComfyUI 任务失败（不自动重复派发）: {json.dumps(status, ensure_ascii=False)}")
+            for node_out in entry.get("outputs", {}).values():
+                for val in node_out.values():
+                    if isinstance(val, list):
+                        for item in val:
+                            if isinstance(item, dict) and "filename" in item:
+                                q = urllib.parse.urlencode({
+                                    "filename": item["filename"],
+                                    "subfolder": item.get("subfolder", ""),
+                                    "type": item.get("type", "output"),
+                                })
+                                file_bytes = urllib.request.urlopen(f"http://127.0.0.1:{COMFY_TUNNEL_PORT}/view?{q}", timeout=60).read()
+                                local_out_dir = os.path.join(OUT_ROOT, out_subdir)
+                                os.makedirs(local_out_dir, exist_ok=True)
+                                actual_ext = os.path.splitext(item["filename"])[1] or ext
+                                lpath = os.path.join(local_out_dir, f"{prefix}_{int(time.time())}_{seed}{actual_ext}")
+                                with open(lpath, "wb") as fh:
+                                    fh.write(file_bytes)
+                                dt = time.time() - t0
+                                print(f"[{out_subdir}] {label} 生成完成 ({dt:.2f}s, {width}x{height}, steps={steps}, seed={seed})", flush=True)
+                                print(f"[colab-ai] 已回传至宿主机本地: {lpath}", flush=True)
+                                return lpath
+
+
+IMAGE_KEYS = ("v5_int8",)
+WARMUP_KEYS = IMAGE_KEYS + ("video", "llm")
+MODEL_LABELS = {"v5_int8": IMAGE_LABEL, "video": "24fps 声画视频", "llm": "提示词 LLM"}
+
+
+def _validate_warmup_targets(targets):
+    if not isinstance(targets, list) or not 1 <= len(targets) <= 3 or any(not isinstance(t, str) or t not in WARMUP_KEYS for t in targets):
+        raise ValueError("预热 targets 必须是1至3项明确模型key的非空列表；不接受未知项目")
+    return list(dict.fromkeys(targets))
+
+
+def _parse_warmup_args(args):
+    args = list(args)
+    if args and args[0] == "--targets":
+        return _validate_warmup_targets(args[1:])
+    if any(a == "--targets" or a.startswith("--targets=") for a in args):
+        raise ValueError("--targets 必须单独指定，不能与旧预热参数混用")
+    model = "v5_int8"
+    mods = []
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--image-model":
+            i += 1
+            if i >= len(args):
+                raise ValueError("缺少 --image-model 值")
+            model = args[i]
+        elif arg.startswith("--image-model="):
+            model = arg.split("=", 1)[1]
+        elif arg in ("image", "video", "llm"):
+            mods.append(arg)
+        else:
+            raise ValueError("未知预热参数")
+        i += 1
+    if model not in IMAGE_KEYS:
+        raise ValueError("未知预热图像模型")
+    return _validate_warmup_targets([model if m == "image" else m for m in (mods or ["image", "llm"])])
+
+
+def _validate_image_args(mod_args):
+    p = argparse.ArgumentParser(add_help=False)
+    p.add_argument("--model", "-m", default="v5_int8")
+    args, _ = p.parse_known_args(mod_args)
+    mk = args.model.lower().strip()
+    if mk in ("edit", "image_edit"):
+        raise SystemExit("改图模块暂未启用")
+    allowed_single = ("v5_int8", "v5-int8", "v5_int8_convrot", "flux_int8", "dit_int8", "default", "v5_bf16", "v5-bf16", "v5", "flux_bf16", "dit_bf16")
+    if "--warmup-only" in mod_args:
+        parts = [x.strip() for x in mk.split(",") if x.strip()]
+        if not parts or any(x not in ("v5_int8", "v5-int8", "v5_int8_convrot", "flux_int8", "dit_int8", "default") for x in parts):
+            raise SystemExit("预热仅接受默认生图模型键 v5_int8")
+    elif mk not in allowed_single:
+        raise SystemExit("未知生图模型键；默认使用 v5_int8")
+    return mk
+
+
+def _try_direct_tunnel_image(mod_args: list) -> bool:
+    _validate_image_args(mod_args)
+    if "--warmup-only" in mod_args:
+        return False
+    try:
+        urllib.request.urlopen(f"http://127.0.0.1:{COMFY_TUNNEL_PORT}/system_stats", timeout=1.5).read()
+    except Exception:
+        return False
+
+    p = argparse.ArgumentParser()
+    p.add_argument("prompt_pos", nargs="*")
+    p.add_argument("--prompt", "-p", default="")
+    p.add_argument("--prompt-file", "-f", default="")
+    p.add_argument("--negative-prompt", "-n", default="")
+    p.add_argument("--ref-image", "--image", "-i", action="append", dest="ref_images", default=[])
+    p.add_argument("--model", "-m", default="v5_int8")
+    p.add_argument("--steps", "-s", type=int, default=0)
+    p.add_argument("--guidance", "-g", type=float, default=0.0)
+    p.add_argument("--width", "-W", type=int, default=2048)
+    p.add_argument("--height", "-H", type=int, default=3072)
+    p.add_argument("--res-mode", default="")
+    p.add_argument("--step-tier", default="")
+    p.add_argument("--denoise", type=float, default=1.0)
+    p.add_argument("--ref-boost", type=float, default=4.0)
+    p.add_argument("--refine-3k", action="store_true")
+    p.add_argument("--seed", type=int, default=-1)
+    args, _ = p.parse_known_args(mod_args)
+
+    mk = (args.model or "v5_int8").lower().strip()
+    try:
+        u_info = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{COMFY_TUNNEL_PORT}/object_info/UNETLoader", timeout=2.5).read().decode())
+        avail_unets = u_info.get("UNETLoader", {}).get("input", {}).get("required", {}).get("unet_name", [[]])[0]
+        c_info = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{COMFY_TUNNEL_PORT}/object_info/CLIPLoader", timeout=2.5).read().decode())
+        avail_clips = c_info.get("CLIPLoader", {}).get("input", {}).get("required", {}).get("clip_name", [[]])[0]
+        v_info = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{COMFY_TUNNEL_PORT}/object_info/VAELoader", timeout=2.5).read().decode())
+        avail_vaes = v_info.get("VAELoader", {}).get("input", {}).get("required", {}).get("vae_name", [[]])[0]
+    except Exception:
+        return False
+
+    if mk in ("v5_bf16", "v5-bf16", "v5", "flux_bf16", "dit_bf16"):
+        unet_file, unet_lbl = IMAGE_BF16_FILE, f"{IMAGE_LABEL} BF16"
+    else:
+        unet_file, unet_lbl = IMAGE_UNET_FILE, IMAGE_LABEL
+    if unet_file not in avail_unets or IMAGE_CLIP_FILE not in avail_clips or IMAGE_VAE_FILE not in avail_vaes:
+        return False
+
+    raw_prompt = args.prompt or " ".join(args.prompt_pos).strip()
+    if args.prompt_file and os.path.exists(args.prompt_file):
+        raw_prompt = open(args.prompt_file, "r", encoding="utf-8").read().strip()
+    raw_prompt = raw_prompt.lstrip("-# \n\r\t").strip()
+    if not raw_prompt:
+        return False
+
+    seed = args.seed if args.seed >= 0 else int(time.time() * 1000) % (2**31 - 1)
+    ref_files = [x for x in (args.ref_images or []) if x and os.path.isfile(x)]
+
+    cur_settings = load_studio_settings()
+    uploaded_refs = [_upload_image_to_comfy_tunnel(rf) for rf in ref_files[:3]]
+    if uploaded_refs:
+        print(f"[image] 生图已挂载参考图 (保持主体特征并按提示词切换场景/造型): {[os.path.basename(x) for x in ref_files[:3]]}", flush=True)
+
+    width = (args.width // 16) * 16
+    height = (args.height // 16) * 16
+    raw_steps = args.steps if args.steps > 0 else 0
+    wf3k, s2_w, s2_h, total_steps, s1_steps, ref_steps, use_hires = build_tunnel_image_workflow(
+        unet_file, raw_prompt, width, height, raw_steps, args.guidance, seed,
+        uploaded_refs=uploaded_refs, settings=cur_settings,
+        res_mode=args.res_mode, step_tier=args.step_tier,
+    )
+    stage_desc = f"二阶段精绘 ({s1_steps}+{ref_steps}={total_steps}步)" if use_hires else f"一阶段直出 ({total_steps}步)"
+
+    try:
+        _submit_comfy_tunnel(wf3k, f"{unet_lbl} {stage_desc}", "img3k", s2_w, s2_h, total_steps, seed, out_subdir="image", ext=".png")
+        return True
+    except Exception as e:
+        print(f"[image] 隧道直连异常 ({e})，回退至标准通道...", flush=True)
+        return False
+
+
+def _try_direct_tunnel_video(mod_args: list) -> bool:
+    if "--warmup-only" in mod_args:
+        return False
+    import remote_video
+    try:
+        u_info = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{COMFY_TUNNEL_PORT}/object_info/UNETLoader", timeout=1.5).read().decode())
+        unets = u_info.get("UNETLoader", {}).get("input", {}).get("required", {}).get("unet_name", [[]])[0]
+        if remote_video.H3_UNET_NAME not in unets:
+            return False
+        c_info = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{COMFY_TUNNEL_PORT}/object_info/CLIPLoader", timeout=1.5).read().decode())
+        clips = c_info.get("CLIPLoader", {}).get("input", {}).get("required", {}).get("clip_name", [[]])[0]
+        if remote_video.H3_CLIP_NAME not in clips:
+            return False
+    except Exception:
+        return False
+
+    p = argparse.ArgumentParser()
+    p.add_argument("prompt_pos", nargs="*")
+    p.add_argument("--prompt", "-p", default="")
+    p.add_argument("--prompt-file", "-f", default="")
+    p.add_argument("--ref-image", "--image", "-i", action="append", dest="ref_images", default=[])
+    p.add_argument("--width", "-W", type=int, default=832)
+    p.add_argument("--height", "-H", type=int, default=1248)
+    p.add_argument("--length", "-l", type=int, default=192)
+    p.add_argument("--steps", "-s", type=int, default=8)
+    p.add_argument("--quality", "-q", default="std")
+    p.add_argument("--seed", type=int, default=-1)
+    args, _ = p.parse_known_args(mod_args)
+
+    q_mode = (args.quality or "std").strip().lower()
+    if q_mode in ("hd", "uhd2k"):
+        try:
+            lu_info = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{COMFY_TUNNEL_PORT}/object_info/LatentUpscaleModelLoader", timeout=1.5).read().decode())
+            lu_models = lu_info.get("LatentUpscaleModelLoader", {}).get("input", {}).get("required", {}).get("model_name", [[]])[0]
+            if remote_video.H3_UPSCALER_NAME not in lu_models:
+                return False
+        except Exception:
+            return False
+
+    prompt = args.prompt or " ".join(args.prompt_pos).strip()
+    if args.prompt_file and os.path.exists(args.prompt_file):
+        prompt = open(args.prompt_file, "r", encoding="utf-8").read().strip()
+    prompt = prompt.lstrip("-# \n\r\t").strip()
+    if not prompt:
+        return False
+
+    ref_files = [x for x in (args.ref_images or []) if x and os.path.isfile(x)]
+    s1_w, s1_h, s2_w, s2_h, q_mode = remote_video.resolve_h3_stage_dims(args.width, args.height, q_mode, ref_files[0] if ref_files else "")
+    start_img_name = ""
+    last_img_name = ""
+    if ref_files:
+        start_img_name = _upload_image_to_comfy_tunnel(ref_files[0])
+        print(f"[video] 已通过高速隧道挂载指定首帧图: {os.path.basename(ref_files[0])} ({s1_w}x{s1_h} -> {s2_w}x{s2_h})", flush=True)
+        if len(ref_files) >= 2:
+            last_img_name = _upload_image_to_comfy_tunnel(ref_files[1])
+            print(f"[video] 已通过高速隧道挂载指定尾帧图: {os.path.basename(ref_files[1])}", flush=True)
+    else:
+        print(f"[video] 纯文字生音视频模式 (T2VA)：24fps 输出 {s2_w}x{s2_h} ...", flush=True)
+
+    length = remote_video.align_h3_length(args.length)
+    steps = max(4, min(30, int(args.steps)))
+    seed = args.seed if args.seed >= 0 else int(time.time() * 1000) % (2**31 - 1)
+
+    wf = remote_video.build_h3_workflow(prompt, s1_w, s1_h, length, steps, seed, start_img_name, last_img_name, quality=q_mode, out_width=s2_w, out_height=s2_h)
+    try:
+        sec = round(length / 24.0, 1)
+        tot_steps = steps + (3 if q_mode == "uhd2k" else 0)
+        q_lbl = {"std": "标准832p", "hd": "超清1088p", "uhd2k": "2K精修"}.get(q_mode, "高清")
+        _submit_comfy_tunnel(wf, f"24fps 声画视频 {q_lbl} ({sec}s/{length}帧)", "vid", s2_w, s2_h, tot_steps, seed, out_subdir="video", ext=".mp4")
+        return True
+    except Exception as e:
+        print(f"[video] 隧道直连异常 ({e})，回退至标准通道...", flush=True)
+        return False
+
+
+def _generation_path(session=None):
+    key = hashlib.sha256((session or DEFAULT_SESSION).encode()).hexdigest()
+    return os.path.join(STATE_DIR, "power-generation-" + key)
+
+
+def _check_generation(session=None):
+    expected = os.environ.get("COLAB_AI_GENERATION")
+    if expected is None:
+        return
+    try:
+        with open(_generation_path(session)) as fh:
+            current = fh.read().strip()
+    except FileNotFoundError:
+        current = "0"
+    if expected != current:
+        raise SystemExit("[colab-ai] 旧任务已因关机暂停，禁止重试或重新开机；请手动继续。")
+
+
+@contextmanager
+def model_initialization_lock(session, lane: str = "media"):
+    os.makedirs(STATE_DIR, mode=0o700, exist_ok=True)
+    key = hashlib.sha256(session.encode()).hexdigest()
+    with open(os.path.join(STATE_DIR, f"model-init-{lane}-{key}.lock"), "a+") as fh:
+        fcntl.flock(fh, fcntl.LOCK_EX)
+        try:
+            _check_generation()
+            yield
+        finally:
+            fcntl.flock(fh, fcntl.LOCK_UN)
+
+
+@idle_work
+def run_module_in_session(module: str, mod_args: list, session: str, allow_create: bool = True):
+    if module == "image":
+        _validate_image_args(mod_args)
+    _check_generation()
+    if not allow_create:
+        ensure_session(session, DEFAULT_GPU, DEFAULT_IDLE_MIN, allow_create=False)
+    direct = {"image": _try_direct_tunnel_image, "video": _try_direct_tunnel_video, "llm": _try_direct_tunnel_llm}.get(module)
+    if direct and direct(mod_args):
+        touch_activity()
+        start_idle_watcher(session, DEFAULT_IDLE_MIN)
+        trigger_async_kernel_keepalive(session)
+        return
+    _lane = "llm" if module == "llm" else "media"
+    with model_initialization_lock(session, _lane):
+        _run_module_cold(module, mod_args, session, allow_create=allow_create)
+
+
+def _run_module_cold(module: str, mod_args: list, session: str, allow_create: bool = True):
+    if module == "image":
+        _validate_image_args(mod_args)
+    _check_generation()
+    touch_activity()
+    ensure_session(session, DEFAULT_GPU, DEFAULT_IDLE_MIN, allow_create=allow_create)
+    if module == "llm" and "--warmup-only" not in mod_args:
+        if _try_direct_tunnel_llm(mod_args):
+            touch_activity()
+            trigger_async_kernel_keepalive(session)
+            return
+        _run_module_cold("llm", ["--warmup-only"], session, allow_create=allow_create)
+        if _try_direct_tunnel_llm(mod_args):
+            touch_activity()
+            trigger_async_kernel_keepalive(session)
+            return
+    if module == "image" and _try_direct_tunnel_image(mod_args):
+        touch_activity()
+        trigger_async_kernel_keepalive(session)
+        return
+    if module == "video" and _try_direct_tunnel_video(mod_args):
+        touch_activity()
+        trigger_async_kernel_keepalive(session)
+        return
+
+    script_path = os.path.join(BASE_DIR, MODULES[module])
+    remote_args = prepare_remote_args(module, mod_args, session)
+    args_json = json.dumps(remote_args, ensure_ascii=False)
+    settings_json = json.dumps(load_studio_settings(), ensure_ascii=False)
+
+    def _make_exec_cmd(cur_args_json: str, cur_settings_json: str):
+        return (
+            [COLAB_BIN, "exec", "-s", session, "--timeout", str(DEFAULT_TIMEOUT)]
+            + _build_remote_env_flags({
+                "COLAB_AI_ARGS_JSON": cur_args_json,
+                "COLAB_AI_SETTINGS_JSON": cur_settings_json,
+            })
+            + ["-f", script_path]
+        )
+
+    cmd = _make_exec_cmd(args_json, settings_json)
+    output_files = []
+    rc = 1
+    for _exec_try in range(3):
+        _check_generation()
+        if not auto_attach_remote_session(session) and not allow_create:
+            raise SystemExit("[colab-ai] 当前未开机或预热期间实例已消失，请先开机。")
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+        output_files = []
+        collected_lines = []
+        for line in proc.stdout:
+            collected_lines.append(line)
+            if line.startswith("COLAB_AI_OUTPUT_FILE="):
+                output_files.append(line.split("=", 1)[1].strip())
+            else:
+                sys.stdout.write(line)
+                sys.stdout.flush()
+        rc = proc.wait()
+        touch_activity()
+        if rc == 0:
+            break
+        joined = "".join(collected_lines)
+        if ("Connection was lost" in joined or "not found" in joined or "Websocket handshake timed out" in joined) and _exec_try < 2:
+            print(f"[colab-ai] 检测到 Colab 连接或实例变动，3秒后自动重连/自愈重试 ({_exec_try+1}/2)...", flush=True)
+            time.sleep(3)
+            _check_generation()
+            ensure_session(session, DEFAULT_GPU, DEFAULT_IDLE_MIN, allow_create=allow_create)
+            remote_args = prepare_remote_args(module, mod_args, session)
+            cmd = _make_exec_cmd(
+                json.dumps(remote_args, ensure_ascii=False),
+                json.dumps(load_studio_settings(), ensure_ascii=False),
+            )
+            continue
+        break
+    if rc != 0:
+        raise SystemExit(rc)
+    if "--warmup-only" not in mod_args and not output_files:
+        print(f"[colab-ai] 错误: 远端执行未产出任何结果文件 (module={module})", flush=True)
+        raise SystemExit(1)
+
+    llm_out_file = ""
+    llm_ephemeral_draft = False
+    if module == "llm":
+        _lp = argparse.ArgumentParser()
+        _lp.add_argument("--out-file", default="")
+        _lp.add_argument("--ephemeral-draft", action="store_true")
+        _la, _ = _lp.parse_known_args(mod_args)
+        llm_out_file = (_la.out_file or "").strip()
+        llm_ephemeral_draft = bool(_la.ephemeral_draft)
+
+    local_out_dir = os.path.join(OUT_ROOT, module)
+    os.makedirs(local_out_dir, exist_ok=True)
+    for rpath in output_files:
+        if module == "llm" and llm_ephemeral_draft and llm_out_file:
+            os.makedirs(os.path.dirname(os.path.abspath(llm_out_file)), exist_ok=True)
+            subprocess.run([COLAB_BIN, "download", "-s", session, rpath, llm_out_file], check=True)
+            print(f"[colab-ai] 已回传至宿主机本地: {llm_out_file}", flush=True)
+        else:
+            lpath = os.path.join(local_out_dir, os.path.basename(rpath))
+            subprocess.run([COLAB_BIN, "download", "-s", session, rpath, lpath], check=True)
+            if module == "llm" and llm_out_file:
+                os.makedirs(os.path.dirname(os.path.abspath(llm_out_file)), exist_ok=True)
+                shutil.copyfile(lpath, llm_out_file)
+            print(f"[colab-ai] 已回传至宿主机本地: {lpath}", flush=True)
+
+
+def cmd_status(session: str):
+    print("=== Colab 活跃会话 ===", flush=True)
+    subprocess.run([COLAB_BIN, "sessions"])
+    print("\n=== Colab 算力余额与消耗率 ===", flush=True)
+    subprocess.run([COLAB_BIN, "usage"])
+
+
+def cmd_stop(session: str, _claim=None):
+    guard = idle_guard(session)
+    call_type = "automatic" if _claim else "manual"
+    _lifecycle_event("stop_entry", call_type=call_type, generation=guard.generation(), endpoint=_local_endpoint(session))
+    token = _claim or guard.claim_stop(expected=os.environ.get("COLAB_AI_GENERATION"))
+    _lifecycle_event("stop_claimed", call_type=call_type, generation=token, endpoint=_local_endpoint(session))
+    os.environ["COLAB_AI_GENERATION"] = token
+    attempt = False
+    try:
+        if not guard.begin_attempt(token):
+            return
+        attempt = True
+        start_idle_watcher(session, DEFAULT_IDLE_MIN)
+        with session_start_lock(session, timeout=30):
+            _check_generation(session)
+            if _auto_attach_remote_session_locked(session):
+                print("[lifecycle] stop requested; automatic retry fenced", flush=True)
+                target_endpoint = _local_endpoint(session)
+                _lifecycle_event("stop_call_begin", call_type=call_type, generation=token, endpoint=target_endpoint, operation="sdk_stop_shutdown_and_unassign")
+                try:
+                    subprocess.run([COLAB_BIN, "stop", "-s", session], check=True, timeout=90)
+                except (Exception, SystemExit) as exc:
+                    _lifecycle_event("stop_call_end", call_type=call_type, generation=token, endpoint=target_endpoint, result="unconfirmed", error_type=type(exc).__name__)
+                    raise
+                _lifecycle_event("stop_call_end", call_type=call_type, generation=token, endpoint=target_endpoint, result="returned_success")
+                if _auto_attach_remote_session_locked(session):
+                    raise IdleError("关机后实例仍在，未确认释放")
+            guard.finish_stop(token, True)
+            _lifecycle_event("stop_verified_empty", call_type=call_type, generation=token)
+            print("[colab-ai] 已确认无活跃实例。", flush=True)
+    except (Exception, SystemExit) as exc:
+        _lifecycle_event("stop_unconfirmed", call_type=call_type, generation=token, error_type=type(exc).__name__)
+        if attempt:
+            guard.finish_stop(token, False, type(exc).__name__)
+            start_idle_watcher(session, DEFAULT_IDLE_MIN)
+        raise SystemExit("[colab-ai] 关机未确认，任务保持暂停；监控保留，自动重试最多3次，请核实或手动重试关机。") from None
+
+
+def _run_existing_image(mod_args):
+    _check_generation()
+    _lifecycle_event("existing_image_begin", endpoint=_local_endpoint(DEFAULT_SESSION))
+    if not _try_direct_tunnel_image(mod_args):
+        _lifecycle_event("existing_image_end", result="refused_or_failed_no_fallback")
+        raise SystemExit("[colab-ai] existing-only: 图像隧道/模型未就绪或本次调用失败；不创建、不连接、不下载、不重试。")
+    touch_activity()
+    trigger_async_kernel_keepalive(DEFAULT_SESSION)
+    _lifecycle_event("existing_image_end", result="success")
+
+
+def _run_parallel_dual_warmup(targets: list, session: str):
+    has_llm = "llm" in targets
+    has_media = any(t != "llm" for t in targets)
+    with ExitStack() as stack:
+        if has_llm:
+            stack.enter_context(model_initialization_lock(session, "llm"))
+        if has_media:
+            stack.enter_context(model_initialization_lock(session, "media"))
+        _check_generation()
+        touch_activity()
+        ri_b64 = base64.b64encode(open(os.path.join(BASE_DIR, "remote_image.py"), "rb").read()).decode("ascii")
+        rv_b64 = base64.b64encode(open(os.path.join(BASE_DIR, "remote_video.py"), "rb").read()).decode("ascii")
+        rl_b64 = base64.b64encode(open(os.path.join(BASE_DIR, "remote_llm.py"), "rb").read()).decode("ascii")
+        rm_b64 = base64.b64encode(open(os.path.join(BASE_DIR, "remote_metrics.py"), "rb").read()).decode("ascii")
+        settings_json = json.dumps(load_studio_settings(), ensure_ascii=False)
+
+        media_targets = [t for t in targets if t != "llm"]
+        runner_code = (
+            "import base64, json, os, subprocess, sys, threading\n"
+            f"ri_b64 = {ri_b64!r}\n"
+            f"rv_b64 = {rv_b64!r}\n"
+            f"rl_b64 = {rl_b64!r}\n"
+            f"rm_b64 = {rm_b64!r}\n"
+            "open('/content/_ri_warm.py', 'wb').write(base64.b64decode(ri_b64))\n"
+            "open('/content/_rv_warm.py', 'wb').write(base64.b64decode(rv_b64))\n"
+            "open('/content/_rl_warm.py', 'wb').write(base64.b64decode(rl_b64))\n"
+            "open('/content/_rm_warm.py', 'wb').write(base64.b64decode(rm_b64))\n"
+            "subprocess.Popen([sys.executable, '/content/_rm_warm.py'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)\n"
+            "plock = threading.Lock()\n"
+            "rcs = {}\n"
+            "def _exec_step(script, args, ok_target):\n"
+            "    env = os.environ.copy()\n"
+            "    env['COLAB_AI_ARGS_JSON'] = json.dumps(args)\n"
+            "    p = subprocess.Popen([sys.executable, script], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, env=env)\n"
+            "    for line in p.stdout:\n"
+            "        with plock:\n"
+            "            sys.stdout.write(line)\n"
+            "            sys.stdout.flush()\n"
+            "    rc = p.wait()\n"
+            "    if rc == 0:\n"
+            "        with plock:\n"
+            "            print('COLAB_AI_WARMUP_TARGET_OK=' + ok_target, flush=True)\n"
+            "    return rc\n"
+            f"media_targets = {media_targets!r}\n"
+            f"has_llm = {has_llm!r}\n"
+            "def _run_media():\n"
+            "    for mt in media_targets:\n"
+            "        if mt == 'video':\n"
+            "            rc = _exec_step('/content/_rv_warm.py', ['--warmup-only'], 'video')\n"
+            "        else:\n"
+            "            rc = _exec_step('/content/_ri_warm.py', ['--warmup-only', '--model', mt], mt)\n"
+            "        if rc != 0:\n"
+            "            rcs['media'] = rc\n"
+            "            return\n"
+            "    rcs['media'] = 0\n"
+            "def _run_llm():\n"
+            "    rcs['llm'] = _exec_step('/content/_rl_warm.py', ['--warmup-only'], 'llm')\n"
+            "threads = []\n"
+            "if media_targets:\n"
+            "    threads.append(threading.Thread(target=_run_media))\n"
+            "if has_llm:\n"
+            "    threads.append(threading.Thread(target=_run_llm))\n"
+            "for th in threads: th.start()\n"
+            "for th in threads: th.join()\n"
+            "if (media_targets and rcs.get('media') != 0) or (has_llm and rcs.get('llm') != 0):\n"
+            "    raise SystemExit(1)\n"
+        )
+        os.makedirs(STATE_DIR, mode=0o700, exist_ok=True)
+        tmp_runner = os.path.join(STATE_DIR, f".dual_warmup_{os.getpid()}_{int(time.time()*1000)}.py")
+        with open(tmp_runner, "w", encoding="utf-8") as fh:
+            fh.write(runner_code)
+        try:
+            for t in targets:
+                print("COLAB_AI_WARMUP_TARGET_BEGIN=" + t, flush=True)
+            all_lbls = " + ".join(MODEL_LABELS.get(t, t) for t in targets)
+            print(f"[colab-ai] 正在并行极速预热所选项目: {all_lbls} ...", flush=True)
+            cmd = (
+                [COLAB_BIN, "exec", "-s", session, "--timeout", str(DEFAULT_TIMEOUT)]
+                + _build_remote_env_flags({"COLAB_AI_SETTINGS_JSON": settings_json})
+                + ["-f", tmp_runner]
+            )
+            rc = 1
+            for _try in range(2):
+                _check_generation()
+                if not auto_attach_remote_session(session):
+                    raise SystemExit("[colab-ai] 当前未开机或预热期间实例已消失，请先开机。")
+                proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+                lines = []
+                for line in proc.stdout:
+                    lines.append(line)
+                    sys.stdout.write(line)
+                    sys.stdout.flush()
+                rc = proc.wait()
+                touch_activity()
+                if rc == 0:
+                    for _tw in range(20):
+                        ok_media = (not has_media) or _is_tunnel_live(COMFY_TUNNEL_PORT)
+                        ok_llm = (not has_llm) or _is_tunnel_live(LLM_TUNNEL_PORT)
+                        if ok_media and ok_llm:
+                            break
+                        time.sleep(0.3)
+                    break
+                joined = "".join(lines)
+                if ("Connection was lost" in joined or "Websocket handshake timed out" in joined) and _try == 0:
+                    print("[colab-ai] 预热连接闪断，2秒后自动续接预热...", flush=True)
+                    time.sleep(2)
+                    continue
+                break
+            if rc != 0:
+                raise SystemExit(rc)
+        finally:
+            try:
+                os.unlink(tmp_runner)
+            except OSError:
+                pass
+
+
+def _main():
+    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help", "help"):
+        print("用法: colab-ai <status|start|warmup|stop|unload|image|video|llm> [参数...]")
+        return
+
+    sub = sys.argv[1]
+    if sub.lower() in ("edit", "image_edit"):
+        raise SystemExit("改图模块暂未启用")
+    image_args = sys.argv[3:] if sub == "run" and len(sys.argv) > 2 and sys.argv[2] == "image" else sys.argv[2:]
+    if sub == "image" or (sub == "run" and len(sys.argv) > 2 and sys.argv[2] == "image"):
+        _validate_image_args(image_args)
+    if sub == "run" and len(sys.argv) > 2 and sys.argv[2].lower() in ("edit", "image_edit"):
+        raise SystemExit("改图模块暂未启用")
+    if sub not in ("status", "stop") and "COLAB_AI_GENERATION" not in os.environ:
+        try:
+            with open(_generation_path()) as fh:
+                os.environ["COLAB_AI_GENERATION"] = fh.read().strip()
+        except FileNotFoundError:
+            os.environ["COLAB_AI_GENERATION"] = "0"
+    _check_generation()
+    rest = sys.argv[2:]
+    session = DEFAULT_SESSION
+    gpu = DEFAULT_GPU
+    idle_min = DEFAULT_IDLE_MIN
+    mod_names = "|".join(MODULES.keys())
+
+    if "--existing-only" in rest:
+        if sub == "image":
+            direct_args = rest
+        elif sub == "run" and rest and rest[0] == "image":
+            direct_args = rest[1:]
+        else:
+            raise SystemExit("[colab-ai] --existing-only 仅用于 image；未执行其他入口")
+        _run_existing_image([arg for arg in direct_args if arg != "--existing-only"])
+        return
+
+    if sub == "status":
+        cmd_status(session)
+    elif sub == "stop":
+        cmd_stop(session)
+    elif sub == "start":
+        ensure_session(session, gpu, idle_min)
+    elif sub == "warmup":
+        try:
+            targets = _parse_warmup_args(rest)
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from None
+        ensure_session(session, gpu, idle_min, allow_create=False)
+        if len(targets) > 1:
+            _run_parallel_dual_warmup(targets, session)
+        else:
+            for target in targets:
+                print("COLAB_AI_WARMUP_TARGET_BEGIN=" + target, flush=True)
+                print("[colab-ai] 正在预热项目: " + MODEL_LABELS.get(target, "提示词 LLM") + " ...", flush=True)
+                mod = "llm" if target == "llm" else ("video" if target == "video" else "image")
+                warm_args = ["--warmup-only"] if mod in ("llm", "video") else ["--warmup-only", "--model", target]
+                run_module_in_session(mod, warm_args, session, allow_create=False)
+                print("COLAB_AI_WARMUP_TARGET_OK=" + target, flush=True)
+    elif sub == "unload":
+        if not has_active_session(session):
+            print("[colab-ai] 当前未开机。", flush=True)
+            return
+        target = rest[0] if rest else "all"
+        subprocess.run(
+            [COLAB_BIN, "exec", "-s", session]
+            + _build_remote_env_flags({"COLAB_AI_ARGS_JSON": json.dumps([target])})
+            + ["-f", os.path.join(BASE_DIR, "remote_unload.py")],
+            check=True,
+        )
+    elif sub == "run":
+        if not rest or rest[0] not in MODULES:
+            raise SystemExit(f"用法: colab-ai run <{mod_names}> [参数...]")
+        mod = rest[0]
+        mod_args = rest[1:]
+        run_module_in_session(mod, mod_args, session)
+    elif sub in MODULES:
+        run_module_in_session(sub, rest, session)
+    else:
+        raise SystemExit(f"未知命令或模块: {sub}")
+
+
+def main():
+    sub = sys.argv[1] if len(sys.argv) > 1 else "help"
+    if sub == "_idle_watch":
+        session, generation, fd = sys.argv[2:5]
+        guard = idle_guard(session)
+        guard.watch(
+            generation,
+            int(fd),
+            lambda token: cmd_stop(session, _claim=token),
+            keepalive=lambda gen: cmd_kernel_keepalive(session, expected_gen=gen),
+            keepalive_interval=300,
+        )
+    elif sub == "_kernel_keepalive":
+        session = sys.argv[2] if len(sys.argv) > 2 else DEFAULT_SESSION
+        gen = sys.argv[3] if len(sys.argv) > 3 else None
+        cmd_kernel_keepalive(session, expected_gen=gen)
+    elif sub in ("status", "stop", "help", "-h", "--help"):
+        _main()
+    else:
+        try:
+            with idle_guard().lease(os.environ.get("COLAB_AI_GENERATION")) as lease:
+                os.environ.setdefault("COLAB_AI_GENERATION", lease.generation)
+                _main()
+        except IdleError as exc:
+            raise SystemExit("[idle] " + str(exc)) from None
+
+
+if __name__ == "__main__":
+    main()

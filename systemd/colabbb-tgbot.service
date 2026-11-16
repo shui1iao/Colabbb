@@ -1,0 +1,19 @@
+[Unit]
+Description=Colabbb tgbot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/colabbb
+Environment=COLABBB_HOME=/opt/colabbb
+Environment=PYTHONDONTWRITEBYTECODE=1
+EnvironmentFile=-/opt/colabbb/config.env
+EnvironmentFile=-/opt/colabbb/optional/tg-bot/tgbot.env
+ExecStart=/usr/bin/python3 /opt/colabbb/optional/tg-bot/tg_bot.py
+Restart=on-failure
+RestartSec=5
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

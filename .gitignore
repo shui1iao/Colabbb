@@ -1,0 +1,28 @@
+# Runtime state & credentials
+state/
+outputs/
+*.env
+!*.env.example
+.civitai_token
+.hf_token
+panel_auth.json
+
+# Keys
+*ed25519*
+*.pem
+*.key
+
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+venv/
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
