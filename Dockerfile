@@ -18,7 +18,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends openssh-client openssh-server ffmpeg tini ca-certificates tzdata \
     && rm -rf /var/lib/apt/lists/* /etc/ssh/ssh_host_* \
     && useradd --system --create-home --home-dir /home/tunnel --shell /usr/sbin/nologin --password '*' tunnel
-RUN python -m pip install google-colab-cli==0.8.0 keyrings.alt==5.0.2 Pillow==13.0.0
+RUN python -m pip install google-colab-cli==0.8.0 keyrings.alt==5.0.2 Pillow==13.0.0 cryptography==44.0.1
 WORKDIR /app
 COPY . /app
 RUN chmod 755 /app/docker/entrypoint.sh /app/colab-ai \

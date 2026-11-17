@@ -18,7 +18,7 @@ import urllib.error
 import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
-IMAGE = 'colabbb-test:v0.2.1'
+IMAGE = 'colabbb-test:v0.2.2'
 
 
 def run(*args, **kwargs):
@@ -83,17 +83,21 @@ def main():
         def login_and_check(port):
             for path in ['/g4-icon.svg', '/favicon.ico', '/apple-touch-icon.png']:
                 assert request(anonymous, port, path)[0] == 200
-            for path in ['/api/settings', '/api/job']:
+            for path in ['/api/settings', '/api/job', '/api/colab_accounts', '/api/drive_sync']:
                 assert request(anonymous, port, path)[0] == 401
             cookies = http.cookiejar.CookieJar()
             logged = urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPCookieProcessor(cookies))
             status, body, headers = request(logged, port, '/api/login', {'username': 'test-admin', 'password': password})
             assert status == 200 and json.loads(body)['ok'] and cookies
             assert 'HttpOnly' in headers['Set-Cookie'] and 'SameSite=Lax' in headers['Set-Cookie']
-            for path in ['/api/settings', '/api/job']:
+            for path in ['/api/settings', '/api/job', '/api/colab_accounts', '/api/drive_sync']:
                 status, body, _ = request(logged, port, path)
                 assert status == 200
-                json.loads(body)
+                doc = json.loads(body)
+                if path == '/api/colab_accounts':
+                    assert isinstance(doc.get('accounts'), list)
+                if path == '/api/drive_sync':
+                    assert doc.get('enabled') is False
             return logged
         try:
             # Parse the real Compose YAML with the Docker Compose implementation.

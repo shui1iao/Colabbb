@@ -95,6 +95,10 @@ if [[ ${COLABBB_ENABLE_TGBOT:-0} == 1 ]]; then
     python3 "$COLABBB_HOME/optional/tg-bot/tg_bot.py" &
     pids+=("$!")
 fi
+if [[ ${COLABBB_ENABLE_DRIVE_SYNC:-0} == 1 ]]; then
+    python3 "$COLABBB_HOME/optional/drive-sync/drive_sync.py" &
+    pids+=("$!")
+fi
 "$@" &
 pids+=("$!")
 # If any required service exits, restart the whole container via Compose policy.

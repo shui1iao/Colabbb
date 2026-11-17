@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import py_compile
 import secrets
+import shutil
 import socket
 import subprocess
 import sys
@@ -44,7 +45,10 @@ def check_html(name, html, temp):
         script_policy = next(x.strip() for x in parser.csp.split(';') if x.strip().startswith('script-src '))
         assert "'sha256-" + digest + "'" in script_policy, (name, digest)
         path = temp / f'{name}-{i}.js'; path.write_text(script)
-        subprocess.run(['node', '--check', str(path)], check=True)
+        if shutil.which('node'):
+            subprocess.run(['node', '--check', str(path)], check=True)
+        elif shutil.which('docker'):
+            subprocess.run(['docker', 'exec', '-i', 'sub-store', 'node', '-e', 'new Function(require("fs").readFileSync(0, "utf8"));'], input=script, text=True, check=True)
         print(f'PASS CSP/JS {name}: sha256-{digest}')
 
 
@@ -165,7 +169,7 @@ def main():
                 status, data, _ = request(anonymous, path)
                 assert status == 200 and data == (ROOT / 'ui/icons' / filename).read_bytes()
             assert request(anonymous, '/')[0] == 200
-            for path in ['/api/job', '/api/settings', '/api/outputs']:
+            for path in ['/api/job', '/api/settings', '/api/outputs', '/api/colab_accounts', '/api/drive_sync']:
                 assert request(anonymous, path)[0] == 401
             cookies = http.cookiejar.CookieJar(); logged = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cookies))
             status, data, headers = request(logged, '/api/login', {'username': 'test-admin', 'password': password})
@@ -173,9 +177,15 @@ def main():
             assert 'HttpOnly' in headers['Set-Cookie'] and 'SameSite=Lax' in headers['Set-Cookie']
             status, data, _ = request(logged, '/')
             assert status == 200 and data == (ROOT / 'ui/panel_ui.html').read_bytes()
-            for path in ['/api/settings', '/api/outputs', '/api/job']:
+            for path in ['/api/settings', '/api/outputs', '/api/job', '/api/colab_accounts', '/api/drive_sync']:
                 status, data, _ = request(logged, path)
-                assert status == 200; json.loads(data)
+                assert status == 200
+                parsed_json = json.loads(data)
+                if path == '/api/colab_accounts':
+                    assert isinstance(parsed_json.get('accounts'), list)
+                if path == '/api/drive_sync':
+                    assert parsed_json.get('enabled') is False
+            assert request(logged, '/api/drive_sync', {'mode': 'drive'})[0] == 409
             assert request(logged, '/api/run', {'module': 'random', 'count': 11})[0] == 400
             # 热覆盖是完整模板替换，不改动权威 HTML。
             override = b'<!doctype html><html><body>override-check</body></html>'

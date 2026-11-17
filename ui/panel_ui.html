@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-d+yz6Rk0V0YId9T93ebzXMd4qHAgoVRMM6wW6a1/hN0='; style-src 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; form-action 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; media-src 'self'; font-src 'none'; worker-src 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-+MuvHvS4ZYY8Z13CbVadrYNSN3JHz1qjs+OSYH5YI/4='; style-src 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; form-action 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; media-src 'self'; font-src 'none'; worker-src 'none'">
   <meta name="color-scheme" content="light dark">
   <title>G4 工作台</title>
   <link rel="icon" type="image/svg+xml" href="/g4-icon.svg?v=g5">
@@ -222,7 +222,7 @@
     opacity: 1;
   }
 
-  /* ==================== 1. Unified Buttons (3 Strict Sizes, Borderless Surface Elevation) ==================== */
+  /* ==================== 1. Unified Studio Buttons (3 Strict Sizes, Borderless Surface Elevation) ==================== */
   .btn {
     position: relative;
     display: inline-flex;
@@ -374,7 +374,7 @@
     outline: none;
   }
 
-  /* 36x20 Sliding Switch for Settings Checkboxes */
+  /* Studio 36x20 Sliding Switch for Settings Checkboxes */
   .settings-check {
     display: inline-flex;
     align-items: center;
@@ -451,7 +451,7 @@
     transform: rotate(45deg) translate(-0.5px, -1px) scale(1);
   }
 
-  /* Custom Floating Select Popover */
+  /* Custom Studio Select Popover */
   .z-native-select-hidden { display: none !important; }
   .z-select { position: relative; display: inline-flex; min-width: 0; width: 100%; }
   .z-select[hidden] { display: none !important; }
@@ -563,7 +563,7 @@
   }
   .z-select-opt.selected .z-select-opt-check { opacity: 1; }
 
-  /* Search Input with Inline Icon (.search) */
+  /* Search Input with Inline Icon (Studio .search) */
   .search-wrap {
     display: inline-flex;
     align-items: center;
@@ -690,7 +690,7 @@
     min-width: 0;
   }
 
-  /* Status Capsules (Surface Status Pill) */
+  /* Status Capsules (Studio .state + Surface Pill) */
   .status-pill {
     display: inline-flex;
     align-items: center;
@@ -724,6 +724,25 @@
   .status-sep { color: var(--muted); font-weight: 400; margin: 0 3px; opacity: 0.7; }
   .status-meta { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
   #cuText { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .cu-acct-desk, .cu-acct-mob { color: var(--fg-secondary); font-weight: 500; }
+  .cu-acct-mob { display: none; }
+  .cu-acct-desk[hidden], .cu-acct-mob[hidden], #cuAcctSep[hidden] { display: none !important; }
+  .cu-chevron {
+    width: 12px;
+    height: 12px;
+    flex: 0 0 12px;
+    color: var(--muted);
+    margin-left: 1px;
+    transition: transform var(--t) var(--ease), color var(--t-fast) var(--ease);
+  }
+  #cuBadge[aria-expanded="true"] { background: var(--blue-soft); }
+  #cuBadge[aria-expanded="true"] .cu-chevron { transform: rotate(180deg); color: var(--blue); }
+  @media (hover: hover) and (pointer: fine) {
+    .status-pill[role="button"]:hover { background: var(--hover); }
+    .status-pill.on[role="button"]:hover { background: var(--green-soft); filter: brightness(0.97); }
+    .status-pill.off[role="button"]:hover { background: var(--red-soft); filter: brightness(0.97); }
+    #cuBadge[aria-expanded="true"]:hover { background: var(--blue-soft); }
+  }
 
   @media (min-width: 681px) {
     #g4Badge { min-width: 140px; justify-content: center; }
@@ -746,7 +765,7 @@
     .topbar-row1, .topbar-right, .topbar-metrics { flex-wrap: nowrap; }
   }
 
-  /* Permanent 4-Column Hardware Telemetry Bar */
+  /* Permanent 4-Column Studio Hardware Telemetry Bar */
   .topbar-hw {
     width: 100%;
     padding-top: 10px;
@@ -1690,7 +1709,7 @@
   }
   #toggleBatchBtn { min-width: 88px; justify-content: center; }
 
-  /* Batch Selection Bar (Recessed Tray + Elevated Controls) */
+  /* Batch Selection Bar (Studio Recessed Tray + Elevated Controls) */
   @keyframes studioBatchReveal {
     0% { opacity: 0; transform: translateY(-4px); }
     100% { opacity: 1; transform: translateY(0); }
@@ -1970,7 +1989,7 @@
     background: transparent;
   }
 
-  /* Synchronized Top & Bottom Pagination Bars (Unified .btn-xs Geometry) */
+  /* Synchronized Top & Bottom Pagination Bars (Unified Studio .btn-xs Geometry) */
   .pagination-bar {
     display: flex;
     align-items: center;
@@ -2000,6 +2019,195 @@
     padding: 0 9px;
     border-radius: 7px;
   }
+  .drive-sync-anchor {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  .drive-sync-trigger .ds-chevron {
+    width: 12px;
+    height: 12px;
+    flex: 0 0 12px;
+    opacity: 0.72;
+    transition: transform var(--t) var(--ease);
+  }
+  .drive-sync-trigger[aria-expanded="true"] {
+    background: var(--blue-soft);
+    color: var(--blue);
+  }
+  .drive-sync-trigger[aria-expanded="true"] .ds-chevron {
+    transform: rotate(180deg);
+  }
+  .drive-sync-picker {
+    position: absolute;
+    top: calc(100% + 7px);
+    right: 0;
+    left: auto;
+    z-index: 92;
+    width: min(308px, calc(100vw - 24px));
+    padding: 12px 13px;
+    background: var(--surface-elevated);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-card);
+    box-shadow: var(--shadow-float);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateY(-4px) scale(0.985);
+    transform-origin: top right;
+    transition: opacity 140ms var(--ease), transform 140ms var(--ease), visibility 0s linear 140ms;
+  }
+  .drive-sync-picker.open {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: none;
+    transition: opacity 140ms var(--ease), transform 140ms var(--ease), visibility 0s linear 0s;
+  }
+  .ds-pop-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--line);
+  }
+  .ds-pop-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--fg);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .ds-folder-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 24px;
+    padding: 0 8px;
+    border-radius: 6px;
+    background: var(--card-2);
+    color: var(--fg-secondary);
+    font-size: 11.5px;
+    font-weight: 500;
+    text-decoration: none;
+    transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+  }
+  .ds-folder-link:hover {
+    background: var(--hover);
+    color: var(--blue);
+  }
+  .ds-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .ds-stat-box {
+    padding: 8px 10px;
+    border-radius: var(--r-ctl);
+    background: var(--card-2);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .ds-stat-label {
+    font-size: 11px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .ds-stat-val {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--fg);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ds-status-note {
+    font-size: 11.5px;
+    color: var(--muted);
+    line-height: 1.42;
+    padding: 0 2px;
+  }
+  .ds-status-note.is-syncing { color: var(--blue); font-weight: 500; }
+  .ds-status-note.is-pending { color: var(--amber); font-weight: 500; }
+  .ds-status-note.is-error { color: var(--red); font-weight: 500; }
+  .ds-action-col {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .ds-action-btn {
+    width: 100%;
+    height: auto;
+    min-height: 44px;
+    padding: 8px 11px;
+    border: 0;
+    border-radius: var(--r-tray);
+    background: var(--card-2);
+    color: var(--fg);
+    font-family: inherit;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    cursor: pointer;
+    user-select: none;
+    transition: background-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease), opacity var(--t-fast) var(--ease);
+  }
+  .ds-action-btn:disabled { opacity: 0.48; cursor: not-allowed; }
+  .ds-action-btn:active:not(:disabled) { background: var(--press); }
+  @media (hover: hover) and (pointer: fine) {
+    .ds-action-btn:not(:disabled):hover {
+      background: var(--hover);
+      box-shadow: inset 0 0 0 1px var(--line-strong);
+    }
+  }
+  .ds-action-btn.is-busy {
+    background: var(--blue-soft);
+    box-shadow: inset 0 0 0 1px var(--blue-border);
+  }
+  .ds-action-left {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+  }
+  .ds-action-text {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5px;
+    min-width: 0;
+  }
+  .ds-action-title {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--fg);
+  }
+  .ds-action-sub {
+    font-size: 11px;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .pagination-bar.pagination-top .works-only-sync {
+    display: none !important;
+  }
+  @media (max-width: 1024px) {
+    .creation-right .pagination-bar.pagination-top .works-only-sync,
+    #worksStandalonePane .works-body.mob-works-collapsed .pagination-bar.pagination-top .works-only-sync {
+      display: inline-flex !important;
+    }
+  }
   .pagination-info { font-size: 12px; color: var(--muted); }
   .pagination-pages { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
   .page-btn {
@@ -2023,7 +2231,7 @@
   .page-btn.active { background: var(--blue); color: #FFFFFF; }
   .page-ellipsis { padding: 0 4px; color: var(--muted); font-size: 12px; }
 
-  /* ==================== 9. Popovers, Lightbox, Toast & Modals ==================== */
+  /* ==================== 9. Popovers, Lightbox, Toast & Studio Modals ==================== */
   /* Random 1~10 Count Popover & Warmup Popover */
   .random-count-picker {
     position: absolute;
@@ -2121,6 +2329,185 @@
   #warmupHint { margin: 0 auto 0 0; }
   #warmupHint:empty { display: none; }
 
+  .cu-badge-anchor {
+    position: relative;
+    display: inline-flex;
+    min-width: 0;
+  }
+  .cu-badge-anchor > #cuBadge {
+    width: 100%;
+  }
+  .account-picker {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    left: auto;
+    z-index: 95;
+    width: min(392px, calc(100vw - 24px));
+    margin: 0;
+    padding: 14px 16px;
+    background: var(--surface-elevated);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-card);
+    box-shadow: var(--shadow-float);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateY(-4px) scale(0.985);
+    transform-origin: top right;
+    transition: opacity 140ms var(--ease), transform 140ms var(--ease), visibility 0s linear 140ms;
+  }
+  .account-picker.open {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: none;
+    transition: opacity 140ms var(--ease), transform 140ms var(--ease), visibility 0s linear 0s;
+  }
+  .acct-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .acct-head-left {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+  }
+  .acct-total-cu {
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .acct-list {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    margin: 10px 0;
+  }
+  .acct-row {
+    width: 100%;
+    padding: 9px 11px;
+    border: 0;
+    border-radius: var(--r-tray);
+    background: var(--card-2);
+    color: var(--fg);
+    font-family: inherit;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    cursor: pointer;
+    user-select: none;
+    transition: background-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease), opacity var(--t-fast) var(--ease);
+  }
+  .acct-row:disabled { opacity: 0.55; cursor: wait; }
+  .acct-row.is-active {
+    background: var(--blue-soft);
+    box-shadow: inset 0 0 0 1px var(--blue-border);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .acct-row:not(.is-active):not(:disabled):hover { background: var(--hover); }
+  }
+  .acct-row:active:not(:disabled) { background: var(--press); }
+  .acct-main {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+  .acct-email-line {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 5px;
+    min-width: 0;
+  }
+  .acct-email {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--fg);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+  }
+  .acct-row.is-active .acct-email { color: var(--blue); }
+  .acct-tag {
+    display: inline-flex;
+    align-items: center;
+    height: 18px;
+    padding: 0 6px;
+    border-radius: 5px;
+    font-size: 10.5px;
+    font-weight: 500;
+    line-height: 1;
+    background: var(--card-3);
+    color: var(--fg-secondary);
+    white-space: nowrap;
+  }
+  .acct-tag.primary {
+    background: var(--blue);
+    color: #FFFFFF;
+  }
+  .acct-sub {
+    font-size: 11px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .acct-sub.online { color: var(--green); font-weight: 500; }
+  .acct-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .acct-bal {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--fg);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .acct-check {
+    width: 15px;
+    height: 15px;
+    color: var(--blue);
+    opacity: 0;
+    flex-shrink: 0;
+  }
+  .acct-row.is-active .acct-check { opacity: 1; }
+  .acct-oauth-box {
+    margin: 8px 0 10px;
+    padding: 10px 11px;
+    border-radius: var(--r-tray);
+    background: var(--card-2);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .acct-oauth-box[hidden] { display: none !important; }
+  .acct-oauth-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .acct-oauth-inp {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 32px;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+  .account-picker .dialog-actions { flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+  #acctPickerHint { margin: 0; flex: 1 1 auto; }
+  #acctPickerHint:empty { display: none; }
+
   /* Fullscreen Lossless 3K Lightbox */
   body.lightbox-lock { overflow: hidden; }
   body.lightbox-lock .float-dock { visibility: hidden; pointer-events: none; }
@@ -2206,7 +2593,7 @@
     .lightbox-nav { display: none !important; }
   }
 
-  /* Modals & Toast */
+  /* Studio Modals & Toast */
   .confirm-dialog {
     width: 400px;
     max-width: calc(100vw - 28px);
@@ -2533,13 +2920,32 @@
       flex-wrap: nowrap;
       gap: 8px;
     }
+    .creation-right .works-head-left {
+      flex: 0 1 auto;
+      flex-wrap: nowrap;
+    }
+    .creation-right .tabs-bar {
+      flex-shrink: 0;
+    }
     .creation-right .tabs-bar .tab-pill {
-      padding: 0 9px;
+      padding: 0 8.5px;
       font-size: 12px;
     }
+    .creation-right .works-filter-group {
+      flex: 1 1 auto;
+      flex-wrap: nowrap;
+      justify-content: flex-end;
+      gap: 6px;
+    }
     .creation-right .search-wrap {
-      width: 154px;
-      min-width: 110px;
+      flex: 1 1 136px;
+      width: auto;
+      max-width: 196px;
+      min-width: 96px;
+    }
+    .creation-right .works-actions-inline {
+      flex-shrink: 0;
+      flex-wrap: nowrap;
     }
     .creation-right .works-actions-inline .btn-sm {
       padding: 0 9px;
@@ -2573,9 +2979,19 @@
       font-size: 11.5px;
     }
   }
-  @media (min-width: 1025px) and (max-width: 1280px) {
+  @media (min-width: 1025px) and (max-width: 1340px) {
     .creation-stage {
-      grid-template-columns: minmax(400px, 440px) minmax(0, 1fr);
+      grid-template-columns: minmax(396px, 432px) minmax(0, 1fr);
+    }
+    .creation-right .works-toolbar {
+      flex-wrap: wrap;
+    }
+    .creation-right .works-filter-group {
+      width: 100%;
+      justify-content: space-between;
+    }
+    .creation-right .search-wrap {
+      max-width: none;
     }
     .creation-right .gallery-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2614,6 +3030,7 @@
       border-top: 1px solid var(--line);
     }
     .topbar-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; width: 100%; }
+    .cu-badge-anchor { width: 100%; }
     .status-pill { justify-content: center; padding: 0 8px; font-size: 11.5px; min-width: 0; }
     .topbar-controls { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; width: 100%; align-items: center; }
     .topbar-controls .btn { width: 100%; padding: 0 4px; font-size: 11.5px; height: 32px; }
@@ -2699,10 +3116,18 @@
     .tabs-bar .tab-pill { height: 32px; }
     .works-filter-group { display: flex; flex-direction: column; align-items: stretch; gap: 6px; width: 100%; }
     .search-wrap { width: 100%; height: 34px; }
-    .works-actions-inline { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; width: 100%; }
+    .works-actions-inline { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; width: 100%; }
+    .works-actions-inline > .drive-sync-anchor { width: 100%; }
+    .works-actions-inline > .drive-sync-anchor > .btn { width: 100%; }
     .pagination-bar.pagination-top .pagination-meta-left {
       width: 100%;
       justify-content: space-between;
+      gap: 6px;
+    }
+    .pagination-meta-right-mob {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
     }
     .works-actions-inline .btn { width: 100%; min-width: 0; padding: 0 4px; }
     .batch-toolbar { flex-direction: column; align-items: stretch; gap: 6px; padding: 7px; }
@@ -2727,7 +3152,10 @@
     }
     .toast { bottom: calc(24px + env(safe-area-inset-bottom, 0px)); }
 
+    .cu-acct-desk { display: none !important; }
+    .cu-acct-mob { display: inline; }
     .warmup-picker { left: 0; right: 0; width: 100%; transform-origin: top center; }
+    .account-picker { right: 0; left: auto; width: min(392px, calc(100vw - 20px)); transform-origin: top right; }
     .settings-dialog { width: calc(100vw - 14px); max-width: calc(100vw - 14px); max-height: 92dvh; }
     .settings-shell { max-height: 92dvh; }
     .settings-head, .settings-body, .settings-foot { padding-left: 14px; padding-right: 14px; }
@@ -2767,7 +3195,7 @@
   </style>
 </head>
 <body>
-<!-- SVG 线性图标符号库 -->
+<!-- SVG 图标符号库（统一视觉规范：16/18px 线性图标，颜色走语义色，无 Emoji 装饰） -->
 <svg xmlns="http://www.w3.org/2000/svg" style="width:0;height:0;position:absolute;overflow:hidden;pointer-events:none" aria-hidden="true">
   <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></symbol>
   <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/></symbol>
@@ -2799,6 +3227,8 @@
   <symbol id="i-check" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></symbol>
   <symbol id="i-check-square" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="m9 12 2 2 4-4"/></symbol>
   <symbol id="i-list" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></symbol>
+  <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></symbol>
 </svg>
 
 <main class="workspace" id="workspace">
@@ -2843,10 +3273,51 @@
           <span class="dot" aria-hidden="true"></span>
           <span id="g4Text"><span class="status-state">检测中</span></span>
         </span>
-        <span id="cuBadge" class="status-pill" title="当前 Colab 计算单元余额">
+        <div class="cu-badge-anchor">
+        <span id="cuBadge" class="status-pill" role="button" tabindex="0" data-action="toggle-account-picker" aria-expanded="false" aria-controls="accountPicker" aria-label="查看或切换 Colab 算力账号" title="点击查看或切换 Colab 算力账号">
           <svg class="ico ico-14 ico-gold" aria-hidden="true"><use href="#i-coins"/></svg>
+          <span id="cuAcctDesk" class="cu-acct-desk" hidden></span>
+          <span id="cuAcctMob" class="cu-acct-mob" hidden></span>
+          <span id="cuAcctSep" class="status-sep" hidden>·</span>
           <span id="cuText">-- CU</span>
+          <svg class="ico cu-chevron" aria-hidden="true"><use href="#i-chevron"/></svg>
         </span>
+    <section id="accountPicker" class="account-picker" aria-label="Colab 算力账号管理" aria-hidden="true" inert>
+      <div class="acct-head">
+        <div class="acct-head-left">
+          <span class="warmup-title">Colab 算力账号</span>
+          <span id="acctTotalCu" class="acct-total-cu"></span>
+        </div>
+        <button type="button" id="refreshAccountsBtn" class="btn btn-xs" data-action="refresh-accounts" title="实时刷新所有账号余额">
+          <svg class="ico ico-14" aria-hidden="true"><use href="#i-refresh"/></svg>
+          <span class="control-label">刷新余额</span>
+        </button>
+      </div>
+      <div id="acctList" class="acct-list"></div>
+      <div id="acctOauthBox" class="acct-oauth-box" hidden>
+        <div class="warmup-hint" style="margin:0">1. 点击打开 Google 官方授权页登录新号并复制授权码；2. 粘贴至下方完成绑定。</div>
+        <div class="acct-oauth-row">
+          <a id="acctOauthLink" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-xs btn-selected">
+            <svg class="ico ico-14" aria-hidden="true"><use href="#i-external"/></svg>
+            <span class="control-label">打开 Google 授权页</span>
+          </a>
+          <button type="button" class="btn btn-xs" data-action="copy-acct-oauth-url"><span class="control-label">复制链接</span></button>
+        </div>
+        <div class="acct-oauth-row">
+          <input type="text" id="acctOauthCodeInp" class="settings-input acct-oauth-inp" placeholder="粘贴 4/0A... 开头的授权码" autocomplete="off" spellcheck="false">
+          <button type="button" id="acctOauthSubmitBtn" class="btn btn-xs btn-primary" data-action="submit-acct-oauth"><span class="control-label">绑定账号</span></button>
+        </div>
+      </div>
+      <div class="dialog-actions">
+        <button type="button" id="toggleAcctOauthBtn" class="btn btn-xs" data-action="toggle-acct-oauth">
+          <svg class="ico ico-14" aria-hidden="true"><use href="#i-plus"/></svg>
+          <span class="control-label">登录新号</span>
+        </button>
+        <span id="acctPickerHint" class="warmup-hint" aria-live="polite"></span>
+        <button type="button" class="btn btn-sm" data-action="close-account-picker"><span class="control-label">收起</span></button>
+      </div>
+    </section>
+        </div>
       </div>
 
       <span class="topbar-sep" aria-hidden="true"></span>
@@ -2925,6 +3396,7 @@
         <button type="button" id="startWarmupBtn" class="btn btn-primary btn-sm" data-action="start-warmup" disabled><span class="control-label">开始预热</span></button>
       </div>
     </section>
+
   </div>
     </header>
 
@@ -3075,7 +3547,7 @@
           <!-- 模块 4：提示词大师对话区 -->
           <div id="modSecLlm" class="mod-section">
             <div class="chat-toolbar">
-              <span id="chatCountLabel" class="chat-count-label">对话记录 (0 轮 · Qwen 27B)</span>
+              <span id="chatCountLabel" class="chat-count-label">对话记录 (0 轮 · Qwen3.8 27B)</span>
               <button type="button" class="btn btn-xs btn-danger" data-action="clear-chat"><svg class="ico ico-14" aria-hidden="true"><use href="#i-plus"/></svg><span class="control-label">开启新对话</span></button>
             </div>
             <div class="chat-box" id="chatBox"></div>
@@ -3091,7 +3563,7 @@
         </div>
         <textarea id="promptInputImage" class="mod-input active" aria-label="生图提示词" placeholder="在此输入或粘贴生图提示词（各模块输入框完全独立）..."></textarea>
         <textarea id="promptInputEdit" hidden style="display:none" class="mod-input" aria-label="命令改图指令" placeholder="先选中一张原图，再输入改图指令..."></textarea>
-        <textarea id="promptInputVideo" class="mod-input" aria-label="视频分镜提示词" placeholder="在此输入或粘贴 24fps 声画视频提示词（支持动作、运镜、对白与环境音效）..."></textarea>
+        <textarea id="promptInputVideo" class="mod-input" aria-label="视频分镜提示词" placeholder="在此输入或粘贴 24fps 声画视频提示词（支持动作、运镜、呼吸/台词与环境音效）..."></textarea>
         <textarea id="promptInputLlm" class="mod-input" aria-label="提示词大师对话" placeholder="告诉提示词大师你想要的场景、角色穿搭或原位修改指令..."></textarea>
 
         <div class="action-bar">
@@ -3208,6 +3680,56 @@
           <input type="search" id="gallerySearchInput" class="filter-search" placeholder="搜索提示词 / 文件名..." aria-label="搜索作品">
         </label>
         <div class="works-actions-inline" style="display:inline-flex;align-items:center;gap:6px;">
+          <div class="drive-sync-anchor" hidden>
+            <button type="button" id="driveSyncToolbarTrigger" class="btn btn-sm drive-sync-trigger" data-action="toggle-drive-sync-picker" aria-expanded="false" title="查看云盘状态、同步谷歌云盘或同步到 Telegram 频道">
+              <svg class="ico ico-14 ico-blue" aria-hidden="true"><use href="#i-cloud"/></svg>
+              <span class="control-label">谷歌同步</span>
+              <svg class="ico ds-chevron" aria-hidden="true"><use href="#i-chevron"/></svg>
+            </button>
+            <section class="drive-sync-picker" aria-label="谷歌加密云盘与频道同步" aria-hidden="true" inert>
+              <div class="ds-pop-head">
+                <span class="ds-pop-title">
+                  <svg class="ico ico-14 ico-blue" aria-hidden="true"><use href="#i-cloud"/></svg>
+                  <span>谷歌加密云同步</span>
+                </span>
+                <a class="ds-folder-link" data-ds-role="folder-link" target="_blank" rel="noopener noreferrer" hidden>
+                  <span>打开云盘</span>
+                  <svg class="ico ico-14" aria-hidden="true"><use href="#i-external"/></svg>
+                </a>
+              </div>
+              <div class="ds-stats-grid">
+                <div class="ds-stat-box">
+                  <span class="ds-stat-label">Google Drive 加密库</span>
+                  <span class="ds-stat-val" data-ds-role="drive-count">-- 张</span>
+                </div>
+                <div class="ds-stat-box">
+                  <span class="ds-stat-label" data-ds-role="channel-label">Telegram 频道</span>
+                  <span class="ds-stat-val" data-ds-role="channel-count">-- 张</span>
+                </div>
+              </div>
+              <div class="ds-status-note" data-ds-role="status-note">正在读取同步状态...</div>
+              <div class="ds-action-col">
+                <button type="button" class="ds-action-btn" data-action="sync-drive" data-ds-role="btn-drive">
+                  <div class="ds-action-left">
+                    <svg class="ico ico-14 ico-blue" aria-hidden="true"><use href="#i-cloud"/></svg>
+                    <div class="ds-action-text">
+                      <span class="ds-action-title" data-ds-role="btn-drive-title">仅同步谷歌云盘</span>
+                      <span class="ds-action-sub">加密上传新图并同步删除项，不发频道</span>
+                    </div>
+                  </div>
+                </button>
+                <button type="button" class="ds-action-btn" data-action="sync-channel" data-ds-role="btn-channel">
+                  <div class="ds-action-left">
+                    <svg class="ico ico-14 ico-sky" aria-hidden="true"><use href="#i-send"/></svg>
+                    <div class="ds-action-text">
+                      <span class="ds-action-title" data-ds-role="btn-channel-title">同步到 TG 频道</span>
+                      <span class="ds-action-sub">先同步谷歌云，再按 6 张相册更新频道</span>
+                    </div>
+                  </div>
+                </button>
+              </div>
+            </section>
+          </div>
           <button type="button" id="toggleBatchBtn" class="btn btn-sm" data-action="toggle-batch-mode" aria-pressed="false">
             <svg class="ico ico-14" aria-hidden="true"><use href="#i-check-square"/></svg>
             <span class="control-label" id="toggleBatchBtnText">批量选择</span>
@@ -3253,10 +3775,62 @@
     <div id="galleryPaginationTop" class="pagination-bar pagination-top" data-pos="top">
       <div class="pagination-meta-left">
         <span id="paginationInfoTop" class="pagination-info">共 0 项</span>
-        <button type="button" class="btn btn-xs gallery-refresh-btn" data-action="refresh-outputs" title="重新加载作品列表">
-          <svg class="ico ico-14 ico-blue" aria-hidden="true"><use href="#i-refresh"/></svg>
-          <span class="control-label">刷新</span>
-        </button>
+        <div class="pagination-meta-right-mob" style="display:inline-flex;align-items:center;gap:6px;">
+          <button type="button" class="btn btn-xs gallery-refresh-btn" data-action="refresh-outputs" title="重新加载作品列表">
+            <svg class="ico ico-14 ico-blue" aria-hidden="true"><use href="#i-refresh"/></svg>
+            <span class="control-label">刷新</span>
+          </button>
+          <div class="drive-sync-anchor works-only-sync" hidden>
+            <button type="button" id="driveSyncInlineTrigger" class="btn btn-xs gallery-refresh-btn drive-sync-trigger" data-action="toggle-drive-sync-picker" aria-expanded="false" title="谷歌加密云同步与频道同步">
+              <svg class="ico ico-14 ico-blue" aria-hidden="true"><use href="#i-cloud"/></svg>
+              <span class="control-label">谷歌同步</span>
+              <svg class="ico ds-chevron" aria-hidden="true"><use href="#i-chevron"/></svg>
+            </button>
+            <section class="drive-sync-picker" aria-label="谷歌加密云盘与频道同步" aria-hidden="true" inert>
+              <div class="ds-pop-head">
+                <span class="ds-pop-title">
+                  <svg class="ico ico-14 ico-blue" aria-hidden="true"><use href="#i-cloud"/></svg>
+                  <span>谷歌加密云同步</span>
+                </span>
+                <a class="ds-folder-link" data-ds-role="folder-link" target="_blank" rel="noopener noreferrer" hidden>
+                  <span>打开云盘</span>
+                  <svg class="ico ico-14" aria-hidden="true"><use href="#i-external"/></svg>
+                </a>
+              </div>
+              <div class="ds-stats-grid">
+                <div class="ds-stat-box">
+                  <span class="ds-stat-label">Google Drive 加密库</span>
+                  <span class="ds-stat-val" data-ds-role="drive-count">-- 张</span>
+                </div>
+                <div class="ds-stat-box">
+                  <span class="ds-stat-label" data-ds-role="channel-label">Telegram 频道</span>
+                  <span class="ds-stat-val" data-ds-role="channel-count">-- 张</span>
+                </div>
+              </div>
+              <div class="ds-status-note" data-ds-role="status-note">正在读取同步状态...</div>
+              <div class="ds-action-col">
+                <button type="button" class="ds-action-btn" data-action="sync-drive" data-ds-role="btn-drive">
+                  <div class="ds-action-left">
+                    <svg class="ico ico-14 ico-blue" aria-hidden="true"><use href="#i-cloud"/></svg>
+                    <div class="ds-action-text">
+                      <span class="ds-action-title" data-ds-role="btn-drive-title">仅同步谷歌云盘</span>
+                      <span class="ds-action-sub">加密上传新图并同步删除项，不发频道</span>
+                    </div>
+                  </div>
+                </button>
+                <button type="button" class="ds-action-btn" data-action="sync-channel" data-ds-role="btn-channel">
+                  <div class="ds-action-left">
+                    <svg class="ico ico-14 ico-sky" aria-hidden="true"><use href="#i-send"/></svg>
+                    <div class="ds-action-text">
+                      <span class="ds-action-title" data-ds-role="btn-channel-title">同步到 TG 频道</span>
+                      <span class="ds-action-sub">先同步谷歌云，再按 6 张相册更新频道</span>
+                    </div>
+                  </div>
+                </button>
+              </div>
+            </section>
+          </div>
+        </div>
       </div>
       <div id="paginationPagesTop" class="pagination-pages"></div>
     </div>
@@ -3613,7 +4187,7 @@
   </div>
 </dialog>
 
-<!-- 二次确认对话框 -->
+<!-- 二次确认对话框（统一视觉规范：写明确认删除「名称」？和删除后无法恢复。） -->
 <dialog id="confirmDialog" class="confirm-dialog">
   <h2 id="confirmTitle">确认删除？</h2>
   <p id="confirmText"></p>
@@ -3867,13 +4441,30 @@ function syncInactiveWorksMirror() {
   const worksBody = document.getElementById('worksBody');
   const worksPane = document.getElementById('worksStandalonePane');
   if (!worksBody || !worksPane) return;
+  const prevCloneOpenTriggerId = worksPane.querySelector('.drive-sync-picker.open')?.parentElement?.querySelector('.drive-sync-trigger')?.dataset?.mirrorId || '';
   const clone = worksBody.cloneNode(true);
   clone.removeAttribute('id');
   clone.classList.add('works-body-clone');
+  clone.querySelectorAll('.drive-sync-picker').forEach(p => {
+    p.classList.remove('open');
+    p.setAttribute('aria-hidden', 'true');
+    if ('inert' in p) p.inert = true;
+  });
+  clone.querySelectorAll('.drive-sync-trigger').forEach(b => b.setAttribute('aria-expanded', 'false'));
   clone.querySelectorAll('[id]').forEach(elNode => {
     elNode.dataset.mirrorId = elNode.id;
     elNode.removeAttribute('id');
   });
+  if (prevCloneOpenTriggerId) {
+    const reopenBtn = clone.querySelector(`[data-mirror-id="${prevCloneOpenTriggerId}"]`);
+    const reopenBox = reopenBtn?.closest('.drive-sync-anchor')?.querySelector('.drive-sync-picker');
+    if (reopenBtn && reopenBox) {
+      reopenBox.classList.add('open');
+      reopenBox.setAttribute('aria-hidden', 'false');
+      if ('inert' in reopenBox) reopenBox.inert = false;
+      reopenBtn.setAttribute('aria-expanded', 'true');
+    }
+  }
   clone.querySelectorAll('label[for="gallerySearchInput"]').forEach(lbl => lbl.removeAttribute('for'));
   clone.querySelectorAll('.filter-search').forEach(inp => {
     inp.value = gallerySearchQuery || '';
@@ -3961,6 +4552,7 @@ function selectView(view, initialRestore = false) {
   }
 
   syncViewFabUI();
+  closeAllDriveSyncPickers();
 
   if (!initialRestore) {
     if (!_lastGallerySig) {
@@ -3998,11 +4590,13 @@ function isSwipeBlockedContext(target) {
   if (document.getElementById('lightbox')?.classList.contains('open')) return true;
   if (_randomPickerOpen || activeZSelect) return true;
   if (document.getElementById('warmupPicker')?.classList.contains('open')) return true;
+  if (document.getElementById('accountPicker')?.classList.contains('open')) return true;
+  if (document.querySelector('.drive-sync-picker.open')) return true;
   if (!target || !(target instanceof Element)) return false;
   return !!target.closest(
     'input, textarea, select, [contenteditable="true"], button, a, label, summary, video, ' +
     '.seg-group, .tabs-bar, .mob-page-dots, .ref-strip-list, .z-select, .z-select-menu, .random-count-picker, ' +
-    '.warmup-picker, .log-console, .chat-msg, .img-prompt-text, .text-card, .task-detail-box, .topbar'
+    '.warmup-picker, .account-picker, .drive-sync-picker, .log-console, .chat-msg, .img-prompt-text, .text-card, .task-detail-box, .topbar'
   );
 }
 
@@ -4299,6 +4893,7 @@ function animateViewSwipeTo(targetView, dirOverride = 0) {
     if (document.getElementById('lightbox')?.classList.contains('open')) return;
     if (_randomPickerOpen || activeZSelect) return;
     if (document.getElementById('warmupPicker')?.classList.contains('open')) return;
+    if (document.getElementById('accountPicker')?.classList.contains('open')) return;
     if (hasHorizontalScrollableAncestor(e.target, e.deltaX)) return;
     const absX = Math.abs(e.deltaX);
     const absY = Math.abs(e.deltaY);
@@ -4455,47 +5050,83 @@ function syncRefSelectionUI() {
   }
 }
 
+let _refAllSorted = [];
+const REF_BATCH_SIZE = 40;
+
+function appendRefCards(box, mod, startIdx, endIdx) {
+  const roleLabel = mod === 'video' ? '视频首帧图' : '生图参考图';
+  const stateKey = mod === 'video' ? 'vidRefImage' : (mod === 'edit' ? 'editRefImage' : 'imgRefImage');
+  const selVal = state[stateKey];
+  const frag = document.createDocumentFragment();
+  for (let i = startIdx; i < endIdx && i < _refAllSorted.length; i++) {
+    const it = _refAllSorted[i];
+    const thumbUrl = it.thumb_url || it.url || ('/files/' + it.mod + '/' + encodeURIComponent(it.name || ''));
+    const isSel = (it.path || '') === selVal && !!selVal;
+    const card = el('div', 'ref-thumb-card' + (isSel ? ' selected' : ''));
+    card.setAttribute('role', 'button');
+    card.setAttribute('tabindex', '0');
+    card.setAttribute('aria-pressed', isSel ? 'true' : 'false');
+    card.setAttribute('aria-label', '选择' + roleLabel + ' ' + (it.name || ''));
+    card.dataset.action = 'pick-ref';
+    card.dataset.mod = mod;
+    card.dataset.path = it.path || '';
+    const tagPrefix = it.mod === 'upload_image' ? '[上传] ' : '';
+    card.title = tagPrefix + (it.name || '') + (it.res ? ' (' + it.res.replace('x', '×') + ')' : '');
+    const img = el('img');
+    img.src = thumbUrl;
+    img.alt = it.name || '';
+    img.loading = 'lazy';
+    img.decoding = 'async';
+    card.append(img);
+    frag.append(card);
+  }
+  box.append(frag);
+  box.dataset.renderedCount = String(Math.min(endIdx, _refAllSorted.length));
+}
+
 function renderRefStripsIfNeeded() {
   const upImgs = (outputsCache.upload_image || []).map(x => ({ ...x, tag: '上传', mod: 'upload_image' }));
-  const genImgs = (outputsCache.image || []).slice(0, 28).map(x => ({ ...x, tag: '', mod: 'image' }));
-  const allImgs = [...upImgs, ...genImgs].slice(0, 28);
-  const sig = allImgs.map(x => x.path).join('|');
+  const genImgs = (outputsCache.image || []).map(x => ({ ...x, tag: '', mod: 'image' }));
+  const allImgs = [...upImgs, ...genImgs].sort((a, b) =>
+    ((b.mtime || 0) - (a.mtime || 0)) || String(b.name || '').localeCompare(String(a.name || ''))
+  );
+  const sig = allImgs.map(x => (x.path || '') + ':' + (x.mtime || 0)).join('|');
   if (sig === _lastRefStripSig) {
     syncRefSelectionUI();
     return;
   }
   _lastRefStripSig = sig;
+  _refAllSorted = allImgs;
 
   const populateStrip = (listId, mod) => {
     const box = document.getElementById(listId);
     if (!box) return;
+    if (!box.dataset.scrollBound) {
+      box.dataset.scrollBound = '1';
+      box.addEventListener('scroll', () => {
+        const cur = parseInt(box.dataset.renderedCount || '0', 10) || 0;
+        if (cur >= _refAllSorted.length) return;
+        if (box.scrollLeft + box.clientWidth >= box.scrollWidth - 260) {
+          appendRefCards(box, mod, cur, cur + REF_BATCH_SIZE);
+        }
+      }, { passive: true });
+    }
     box.replaceChildren();
+    box.dataset.renderedCount = '0';
     if (!allImgs.length) {
       const hint = el('div', '', '点击右侧「上传图片」或先生成作品即可在此点选挂载');
       hint.style.cssText = 'font-size:12px;color:var(--muted);padding:8px 2px;';
       box.append(hint);
       return;
     }
-    const roleLabel = mod === 'video' ? '视频首帧图' : '生图参考图';
-    allImgs.forEach(it => {
-      const thumbUrl = it.thumb_url || it.url || ('/files/' + it.mod + '/' + encodeURIComponent(it.name || ''));
-      const card = el('div', 'ref-thumb-card');
-      card.setAttribute('role', 'button');
-      card.setAttribute('tabindex', '0');
-      card.setAttribute('aria-pressed', 'false');
-      card.setAttribute('aria-label', '选择' + roleLabel + ' ' + (it.name || ''));
-      card.dataset.action = 'pick-ref';
-      card.dataset.mod = mod;
-      card.dataset.path = it.path || '';
-      card.title = (it.name || '') + (it.res ? ' (' + it.res.replace('x', '×') + ')' : '');
-      const img = el('img');
-      img.src = thumbUrl;
-      img.alt = it.name || '';
-      img.loading = 'lazy';
-      img.decoding = 'async';
-      card.append(img);
-      box.append(card);
-    });
+    const stateKey = mod === 'video' ? 'vidRefImage' : (mod === 'edit' ? 'editRefImage' : 'imgRefImage');
+    const selVal = state[stateKey];
+    let initCount = REF_BATCH_SIZE;
+    if (selVal) {
+      const selIdx = allImgs.findIndex(x => x.path === selVal);
+      if (selIdx >= initCount) initCount = selIdx + 8;
+    }
+    appendRefCards(box, mod, 0, initCount);
   };
 
   populateStrip('imgRefList', 'image');
@@ -4537,7 +5168,7 @@ document.getElementById('fileInputImage').addEventListener('change', async (ev) 
 
 
 /* ==================== 提示词大师对话渲染 ==================== */
-let uiMetaConfig = { image_label: 'Flux / DiT INT8', video_label: '24fps 声画视频', llm_label: 'Qwen 27B GGUF (llama-server)', comfy_url: '' };
+let uiMetaConfig = { image_label: 'Flux / DiT INT8', video_label: '24fps 声画视频', llm_label: 'Qwen 27B GGUF (llama-server)', comfy_url: '', drive_sync_enabled: false, channel_sync_enabled: false };
 
 function syncComfyExternalLink(meta) {
   const link = document.getElementById('comfyExtLink');
@@ -4566,6 +5197,9 @@ function applyUiMetaLabels(meta) {
   if (elImg && uiMetaConfig.image_label) elImg.textContent = uiMetaConfig.image_label;
   if (elLlm && uiMetaConfig.llm_label) elLlm.textContent = uiMetaConfig.llm_label;
   if (elVid && uiMetaConfig.video_label) elVid.textContent = uiMetaConfig.video_label;
+  if (typeof meta.drive_sync_enabled === 'boolean') {
+    applyDriveSyncUI();
+  }
 }
 
 function displayModelName(label) {
@@ -4573,8 +5207,7 @@ function displayModelName(label) {
   if (/Qwen.*27B|Qwen.*30B/i.test(name)) return 'Qwen 27B';
   if (/BF16/i.test(name)) return (uiMetaConfig.image_label || 'Flux / DiT').replace(/\s*INT8$/i, '') + ' BF16';
   if (/Flux|DiT|\bV5\b/i.test(name)) return uiMetaConfig.image_label || 'Flux / DiT INT8';
-  if (/24fps|MiniMax[- ]?H3/i.test(name)) return uiMetaConfig.video_label || '24fps 声画视频';
-  if (/Wan\s*2\.2.*14B/i.test(name)) return 'Wan 2.2 14B';
+  if (/24fps|H3/i.test(name)) return uiMetaConfig.video_label || '24fps 声画视频';
   return name;
 }
 
@@ -4650,7 +5283,7 @@ function renderChatIfNeeded() {
     const rounds = Math.floor(chatHistory.length / 2);
     lbl.textContent = pendingLlm.length
       ? `对话记录 (${rounds} 轮 · 正在构思…)`
-      : `对话记录 (${rounds} 轮 · Qwen 27B)`;
+      : `对话记录 (${rounds} 轮 · Qwen3.8 27B)`;
   }
   const cb = document.getElementById('chatBox');
   if (!cb) return;
@@ -4669,7 +5302,7 @@ function renderChatIfNeeded() {
       meta.append(el('span', '', '你' + (m.time ? ' · ' + m.time : '')));
       item.append(meta, el('div', '', m.content || ''));
     } else {
-      const mName = displayModelName(m.model_label || 'Qwen 27B');
+      const mName = displayModelName(m.model_label || 'Qwen3.8 27B');
       meta.append(el('span', '', mName + (m.time ? ' · ' + m.time : '')));
       const copyBtn = el('button', 'btn btn-xs');
       copyBtn.type = 'button';
@@ -4708,7 +5341,7 @@ function renderChatIfNeeded() {
 
     const aItem = el('div', 'chat-msg assistant thinking');
     const aMeta = el('div', 'chat-meta');
-    aMeta.append(el('span', '', 'Qwen 27B'));
+    aMeta.append(el('span', '', 'Qwen3.8 27B'));
     const bodyRow = el('div', 'thinking-inline');
     const dots = el('span', 'thinking-dots');
     dots.append(el('i'), el('i'), el('i'));
@@ -5013,16 +5646,313 @@ function closeWarmupPicker(restoreFocus = true) { setWarmupPickerOpen(false, res
 function warmupAll() {
   if (instanceActive === false) { toast('请先开机；预热不会自动创建实例'); return; }
   if (instanceActive !== true || powerBusyTask() || !powerJobsKnown || statusLoading) return;
+  setAccountPickerOpen(false);
   const box = document.getElementById('warmupPicker');
   const nextOpen = !box.classList.contains('open');
   setWarmupPickerOpen(nextOpen, false);
   if (nextOpen) syncWarmupPicker();
 }
+
+let colabAccountsState = { active_email: '', drive_sync_email: '', accounts: [] };
+let accountSwitching = false;
+let accountLoading = false;
+let currentOauthUrl = '';
+
+function alignAccountPickerToBadge() {
+  const box = document.getElementById('accountPicker');
+  const anchor = box?.parentElement;
+  if (!box || !anchor) return;
+  box.style.left = 'auto';
+  box.style.right = '0px';
+  const aRect = anchor.getBoundingClientRect();
+  const vw = document.documentElement.clientWidth || window.innerWidth || 390;
+  const w = Math.min(392, vw - 20);
+  const idealLeft = aRect.right - w;
+  if (idealLeft < 10) {
+    box.style.right = 'auto';
+    box.style.left = `${Math.round(10 - aRect.left)}px`;
+  } else if (aRect.right > vw - 10) {
+    box.style.left = 'auto';
+    box.style.right = `${Math.round(aRect.right - (vw - 10))}px`;
+  }
+}
+
+function setAccountPickerOpen(open) {
+  const box = document.getElementById('accountPicker');
+  const badge = document.getElementById('cuBadge');
+  if (!box || !badge) return;
+  if (open) {
+    setWarmupPickerOpen(false, false);
+    alignAccountPickerToBadge();
+  }
+  box.classList.toggle('open', open);
+  box.setAttribute('aria-hidden', open ? 'false' : 'true');
+  if ('inert' in box) box.inert = !open;
+  badge.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (!open) {
+    const ob = document.getElementById('acctOauthBox');
+    if (ob) ob.hidden = true;
+  }
+}
+window.addEventListener('resize', () => {
+  if (document.getElementById('accountPicker')?.classList.contains('open')) {
+    alignAccountPickerToBadge();
+  }
+});
+
+function toggleAccountPicker() {
+  const box = document.getElementById('accountPicker');
+  if (!box) return;
+  const nextOpen = !box.classList.contains('open');
+  setAccountPickerOpen(nextOpen);
+  if (nextOpen) {
+    renderColabAccountsList();
+    loadColabAccounts(false);
+  }
+}
+
+function renderColabAccountsList() {
+  const listEl = document.getElementById('acctList');
+  const totEl = document.getElementById('acctTotalCu');
+  if (!listEl) return;
+  const rows = Array.isArray(colabAccountsState?.accounts) ? colabAccountsState.accounts : [];
+  if (!rows.length) {
+    listEl.replaceChildren(el('div', 'warmup-hint', accountLoading ? '正在读取账号与实时余额...' : '暂无已登录的 Colab 账号'));
+    if (totEl) totEl.textContent = '';
+    return;
+  }
+  let sumCu = 0;
+  let hasNum = false;
+  rows.forEach(r => {
+    if (typeof r.balance_num === 'number' && Number.isFinite(r.balance_num)) {
+      sumCu += r.balance_num;
+      hasNum = true;
+    }
+  });
+  if (totEl) {
+    totEl.textContent = rows.length > 1 && hasNum ? `共 ${rows.length} 个号 · 合计 ${sumCu.toFixed(2)} CU` : '';
+  }
+
+  const frag = document.createDocumentFragment();
+  rows.forEach(item => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'acct-row' + (item.is_active ? ' is-active' : '');
+    btn.dataset.action = 'switch-colab-account';
+    btn.dataset.email = item.email || '';
+    btn.disabled = accountSwitching;
+
+    const main = el('div', 'acct-main');
+    const line1 = el('div', 'acct-email-line');
+    line1.append(el('span', 'acct-email', item.email || '未知账号'));
+    if (item.is_active) line1.append(el('span', 'acct-tag primary', '当前使用'));
+    if (item.is_drive_sync) line1.append(el('span', 'acct-tag', '云盘同步'));
+    main.append(line1);
+
+    const rateDisp = typeof item.rate === 'string' && item.rate.endsWith('/hr') ? item.rate.slice(0, -3) + ' CU/h' : (item.rate || '未知');
+    const subTxt = item.active === true
+      ? `实例运行中 · ${rateDisp}`
+      : (item.active === false ? '已关机 · 空闲备用' : '状态待刷新');
+    main.append(el('div', 'acct-sub' + (item.active === true ? ' online' : ''), subTxt));
+
+    const right = el('div', 'acct-right');
+    right.append(el('span', 'acct-bal', `${item.balance || '未知'} CU`));
+    const ns = 'http://www.w3.org/2000/svg';
+    const chk = document.createElementNS(ns, 'svg');
+    chk.setAttribute('class', 'ico acct-check');
+    chk.setAttribute('aria-hidden', 'true');
+    const u = document.createElementNS(ns, 'use');
+    u.setAttribute('href', '#i-check');
+    chk.append(u);
+    right.append(chk);
+
+    btn.append(main, right);
+    frag.append(btn);
+  });
+  listEl.replaceChildren(frag);
+}
+
+async function loadColabAccounts(force = false) {
+  if (accountLoading && !force) return;
+  accountLoading = true;
+  const hint = document.getElementById('acctPickerHint');
+  if (hint && force) hint.textContent = '正在刷新余额...';
+  renderColabAccountsList();
+  try {
+    const res = await fetch(force ? '/api/colab_accounts?force=1' : '/api/colab_accounts', { cache: 'no-store' });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.ok) {
+      colabAccountsState = {
+        active_email: data.active_email || '',
+        drive_sync_email: data.drive_sync_email || '',
+        accounts: Array.isArray(data.accounts) ? data.accounts : [],
+      };
+      const cur = colabAccountsState.accounts.find(a => a.is_active);
+      if (cur) syncCuAccountBadge(cur.local_name, cur.short_label, cur.balance, cur.email);
+    }
+  } catch (_) {
+  } finally {
+    accountLoading = false;
+    if (hint && hint.textContent === '正在刷新余额...') hint.textContent = '';
+    renderColabAccountsList();
+  }
+}
+
+function syncCuAccountBadge(localName, shortLabel, balanceStr, fullEmail) {
+  const deskEl = document.getElementById('cuAcctDesk');
+  const mobEl = document.getElementById('cuAcctMob');
+  const sepEl = document.getElementById('cuAcctSep');
+  const cuEl = document.getElementById('cuText');
+  const badgeEl = document.getElementById('cuBadge');
+  const hasAcct = Boolean(localName || shortLabel);
+  if (deskEl) {
+    deskEl.textContent = localName || shortLabel || '';
+    deskEl.hidden = !hasAcct;
+  }
+  if (mobEl) {
+    mobEl.textContent = shortLabel || localName || '';
+    mobEl.hidden = !hasAcct;
+  }
+  if (sepEl) sepEl.hidden = !hasAcct;
+  if (cuEl && balanceStr) cuEl.textContent = `${balanceStr} CU`;
+  if (badgeEl && fullEmail) {
+    badgeEl.title = `当前算力账号: ${fullEmail}（点击切换或查看全部账号）`;
+  }
+}
+
+async function requestSwitchColabAccount(email, stopCurrent = false) {
+  if (!email || accountSwitching) return;
+  const curActive = (Array.isArray(colabAccountsState?.accounts) ? colabAccountsState.accounts : []).find(a => a.is_active);
+  if (curActive && curActive.email === email) {
+    toast(`当前已在使用 ${email}`);
+    return;
+  }
+  if (!stopCurrent && (instanceActive === true || curActive?.active === true)) {
+    confirmAction(
+      '切换前先关闭当前实例？',
+      `当前账号 (${curActive?.email || '原账号'}) 仍有运行中的 Colab 实例。为避免原账号在后台持续扣费，将先自动关机确认释放后再切换至 ${email}。`,
+      () => requestSwitchColabAccount(email, true),
+      '关机并切换'
+    );
+    return;
+  }
+  accountSwitching = true;
+  const hint = document.getElementById('acctPickerHint');
+  if (hint) hint.textContent = stopCurrent ? '正在安全关闭当前实例并切换账号...' : '正在切换算力账号...';
+  renderColabAccountsList();
+  try {
+    const res = await fetch('/api/colab_accounts/switch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, stop_current: stopCurrent }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 409 && data.need_stop_confirm && !stopCurrent) {
+      accountSwitching = false;
+      if (hint) hint.textContent = '';
+      renderColabAccountsList();
+      confirmAction(
+        '切换前先关闭当前实例？',
+        data.message || '当前账号仍有运行中的实例，是否先自动关机再切换？',
+        () => requestSwitchColabAccount(email, true),
+        '关机并切换'
+      );
+      return;
+    }
+    if (!res.ok || !data.ok) {
+      toast(data.message || '切换账号失败');
+      return;
+    }
+    if (data.accounts_state && Array.isArray(data.accounts_state.accounts)) {
+      colabAccountsState = data.accounts_state;
+    }
+    toast(data.message || `已切换至 ${email}`);
+    await loadColabStatus(true);
+    await pollJob();
+  } catch (err) {
+    toast(err.message || '网络异常，切换失败');
+  } finally {
+    accountSwitching = false;
+    if (hint) hint.textContent = '';
+    renderColabAccountsList();
+  }
+}
+
+async function toggleAccountOauthBox() {
+  const box = document.getElementById('acctOauthBox');
+  const inp = document.getElementById('acctOauthCodeInp');
+  const link = document.getElementById('acctOauthLink');
+  const hint = document.getElementById('acctPickerHint');
+  if (!box) return;
+  if (!box.hidden) {
+    box.hidden = true;
+    return;
+  }
+  if (hint) hint.textContent = '正在生成 Google 授权链接...';
+  try {
+    const res = await fetch('/api/colab_accounts/oauth_start', { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok || !data.auth_url) throw new Error(data.message || '生成授权链接失败');
+    currentOauthUrl = data.auth_url;
+    if (link) link.href = currentOauthUrl;
+    if (inp) inp.value = '';
+    box.hidden = false;
+    setTimeout(() => inp?.focus(), 60);
+  } catch (err) {
+    toast(err.message || '生成授权链接失败');
+  } finally {
+    if (hint) hint.textContent = '';
+  }
+}
+
+async function submitAccountOauthCode() {
+  const inp = document.getElementById('acctOauthCodeInp');
+  const btn = document.getElementById('acctOauthSubmitBtn');
+  const box = document.getElementById('acctOauthBox');
+  const code = (inp?.value || '').trim();
+  if (!code) {
+    toast('请先粘贴 Google 授权码');
+    inp?.focus();
+    return;
+  }
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch('/api/colab_accounts/oauth_complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) throw new Error(data.message || '授权验证失败');
+    if (inp) inp.value = '';
+    if (box) box.hidden = true;
+    if (data.accounts_state && Array.isArray(data.accounts_state.accounts)) {
+      colabAccountsState = data.accounts_state;
+    } else {
+      await loadColabAccounts(true);
+    }
+    renderColabAccountsList();
+    await loadColabStatus(true);
+    toast(data.message || '新账号登录成功');
+  } catch (err) {
+    toast(err.message || '授权验证失败');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 document.addEventListener('pointerdown', (e) => {
   const box = document.getElementById('warmupPicker');
-  if (!box || !box.classList.contains('open')) return;
-  if (e.target.closest('#warmupPicker') || e.target.closest('#warmupG4Btn')) return;
-  setWarmupPickerOpen(false, false);
+  if (box && box.classList.contains('open') && !e.target.closest('#warmupPicker') && !e.target.closest('#warmupG4Btn')) {
+    setWarmupPickerOpen(false, false);
+  }
+  const abox = document.getElementById('accountPicker');
+  if (abox && abox.classList.contains('open') && !e.target.closest('#accountPicker') && !e.target.closest('#cuBadge')) {
+    setAccountPickerOpen(false);
+  }
+  if (document.querySelector('.drive-sync-picker.open') && !e.target.closest('.drive-sync-anchor')) {
+    closeAllDriveSyncPickers();
+  }
 });
 document.addEventListener('change', e => {
   const el = e.target.closest('[data-warmup-target]');
@@ -5087,7 +6017,7 @@ async function submitPowerTask(mod) {
 }
 
 /* ==================== 任务轮询（精简轻量轮询 + 按需拉取详情） ==================== */
-let lastCompletedSeq = 0;
+let lastCompletedSeq = null;
 let jobPollSeq = 0;
 let lastJobResponseSeq = 0;
 
@@ -5396,8 +6326,11 @@ async function pollJob() {
       logBox.scrollTop = atBottom ? logBox.scrollHeight : readingScroll;
     }
 
-    if ((st.completed_seq || 0) > lastCompletedSeq) {
-      lastCompletedSeq = st.completed_seq;
+    const curSeq = st.completed_seq || 0;
+    if (lastCompletedSeq === null) {
+      lastCompletedSeq = curSeq;
+    } else if (curSeq !== lastCompletedSeq) {
+      lastCompletedSeq = curSeq;
       await loadChat();
       await loadOutputs(false);
     }
@@ -5426,7 +6359,7 @@ async function loadColabStatus(force = false) {
     syncPowerButton('start');
   }
   lastStatusAttempt = Date.now();
-  let st = { active: null, balance: '未知', rate: '未知' };
+  let st = { active: null, balance: '未知', rate: '未知', email: '', local_name: '', short_label: '' };
   try {
     const res = await fetch(force ? '/api/status?force=1' : '/api/status', { cache: 'no-store' });
     if (!res.ok) throw new Error('状态检查失败');
@@ -5434,7 +6367,10 @@ async function loadColabStatus(force = false) {
     st = {
       active: data.active === true ? true : (data.active === false ? false : null),
       balance: data.balance || '未知',
-      rate: data.rate || '未知'
+      rate: data.rate || '未知',
+      email: data.email || '',
+      local_name: data.local_name || '',
+      short_label: data.short_label || ''
     };
   } catch (_) {}
   if (seq !== statusRequestSeq) return;
@@ -5456,6 +6392,9 @@ async function loadColabStatus(force = false) {
     );
   }
   if (cu) cu.textContent = `${st.balance} CU`;
+  if (st.local_name || st.short_label) {
+    syncCuAccountBadge(st.local_name, st.short_label, st.balance, st.email);
+  }
   syncPowerButton('start');
   if (st.active === true) {
     pollHwMetrics();
@@ -5645,8 +6584,265 @@ async function loadOutputs(forceRender) {
       updateTabCounts();
       renderRefStripsIfNeeded();
       renderGallery(forceRender);
+      loadDriveSyncStatus();
     }
   } catch (_) {}
+}
+
+/* ==================== Google Drive 加密同步 & Telegram 频道同步控制 ==================== */
+let driveSyncState = null;
+let _driveSyncPollTimer = null;
+let _driveSyncSubmitting = false;
+
+function alignDriveSyncPicker(box) {
+  const anchor = box?.parentElement;
+  if (!box || !anchor) return;
+  box.style.left = 'auto';
+  box.style.right = '0px';
+  const aRect = anchor.getBoundingClientRect();
+  const vw = document.documentElement.clientWidth || window.innerWidth || 390;
+  const w = Math.min(308, vw - 24);
+  const idealLeft = aRect.right - w;
+  if (idealLeft < 10) {
+    box.style.right = 'auto';
+    box.style.left = `${Math.round(10 - aRect.left)}px`;
+  } else if (aRect.right > vw - 10) {
+    box.style.left = 'auto';
+    box.style.right = `${Math.round(aRect.right - (vw - 10))}px`;
+  }
+}
+
+function closeAllDriveSyncPickers() {
+  document.querySelectorAll('.drive-sync-anchor').forEach(anc => {
+    const box = anc.querySelector('.drive-sync-picker');
+    const btn = anc.querySelector('.drive-sync-trigger');
+    if (box) {
+      box.classList.remove('open');
+      box.setAttribute('aria-hidden', 'true');
+      if ('inert' in box) box.inert = true;
+    }
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+  });
+}
+
+function toggleDriveSyncPicker(triggerBtn) {
+  const anc = triggerBtn?.closest('.drive-sync-anchor');
+  const box = anc?.querySelector('.drive-sync-picker');
+  if (!anc || !box) return;
+  const willOpen = !box.classList.contains('open');
+  closeAllDriveSyncPickers();
+  if (willOpen) {
+    setWarmupPickerOpen(false, false);
+    setAccountPickerOpen(false);
+    alignDriveSyncPicker(box);
+    box.classList.add('open');
+    box.setAttribute('aria-hidden', 'false');
+    if ('inert' in box) box.inert = false;
+    triggerBtn.setAttribute('aria-expanded', 'true');
+    loadDriveSyncStatus(true);
+  }
+}
+
+window.addEventListener('resize', () => {
+  document.querySelectorAll('.drive-sync-picker.open').forEach(box => alignDriveSyncPicker(box));
+});
+
+function setTriggerLabelAndChevron(btn, text, iconId, iconCls) {
+  if (!btn) return;
+  const sig = `${iconId}|${iconCls}|${text}|chev`;
+  if (btn.dataset.ctlSig === sig && btn.childNodes.length > 0) return;
+  btn.dataset.ctlSig = sig;
+  btn.replaceChildren(
+    svgIcon(iconId, iconCls),
+    el('span', 'control-label', text),
+    svgIcon('i-chevron', 'ico ds-chevron')
+  );
+}
+
+function applyDriveSyncUI() {
+  const st = driveSyncState;
+  const dsEnabled = st ? (st.enabled !== false) : !!uiMetaConfig.drive_sync_enabled;
+  const chEnabled = st ? !!st.channel_enabled : !!uiMetaConfig.channel_sync_enabled;
+
+  document.querySelectorAll('.drive-sync-anchor').forEach(anc => {
+    anc.hidden = !dsEnabled;
+  });
+  if (!dsEnabled) {
+    closeAllDriveSyncPickers();
+    return;
+  }
+
+  const task = (st && st.task) || {};
+  const isRunning = !!task.running || _driveSyncSubmitting;
+  const runMode = task.mode || '';
+
+  const upCnt = Number(st?.drive_uploaded || 0);
+  const pendUp = Number(st?.pending_upload || 0);
+  const pendDel = Number(st?.pending_delete || 0);
+  const errCnt = Number(st?.errors || 0);
+  const chCnt = Number(st?.channel_synced || 0);
+  const pendTotal = pendUp + pendDel;
+
+  document.querySelectorAll('.drive-sync-trigger').forEach(btn => {
+    btn.classList.toggle('is-spinning', isRunning);
+    if (isRunning) {
+      setTriggerLabelAndChevron(
+        btn,
+        runMode === 'channel' ? '推频道中' : '同步中',
+        'i-refresh',
+        'ico ico-14 ico-blue'
+      );
+    } else if (pendTotal > 0) {
+      setTriggerLabelAndChevron(btn, `谷歌同步 (${pendTotal})`, 'i-cloud', 'ico ico-14 ico-orange');
+    } else {
+      setTriggerLabelAndChevron(btn, '谷歌同步', 'i-cloud', 'ico ico-14 ico-blue');
+    }
+  });
+
+  document.querySelectorAll('.drive-sync-picker').forEach(box => {
+    const fl = box.querySelector('[data-ds-role="folder-link"]');
+    if (fl) {
+      if (st?.folder_url) {
+        fl.href = st.folder_url;
+        fl.hidden = false;
+      } else {
+        fl.hidden = true;
+      }
+    }
+    const dc = box.querySelector('[data-ds-role="drive-count"]');
+    if (dc) dc.textContent = st ? `${upCnt} 张` : '-- 张';
+
+    const cl = box.querySelector('[data-ds-role="channel-label"]');
+    const cc = box.querySelector('[data-ds-role="channel-count"]');
+    const chanStatBox = cc?.closest('.ds-stat-box');
+    const statsGrid = box.querySelector('.ds-stats-grid');
+    if (chanStatBox) chanStatBox.hidden = !chEnabled;
+    if (statsGrid) statsGrid.style.gridTemplateColumns = chEnabled ? 'repeat(2, minmax(0, 1fr))' : 'minmax(0, 1fr)';
+    if (cl) cl.textContent = st?.channel_username ? `TG 频道 ${st.channel_username}` : 'Telegram 频道';
+    if (cc) cc.textContent = st ? `${chCnt} 张` : '-- 张';
+
+    const note = box.querySelector('[data-ds-role="status-note"]');
+    if (note) {
+      note.classList.remove('is-syncing', 'is-pending', 'is-error');
+      if (isRunning) {
+        note.classList.add('is-syncing');
+        note.textContent = task.progress
+          ? task.progress.replace(/^[⏳🔄⬆️✅❌]+\s*/, '')
+          : (runMode === 'channel' ? '正在将谷歌云图片同步至频道...' : '正在加密同步本地作品到 Google Drive...');
+      } else if (errCnt > 0) {
+        note.classList.add('is-error');
+        note.textContent = `有 ${errCnt} 项同步异常，点击下方按钮可立即重试`;
+      } else if (pendTotal > 0) {
+        note.classList.add('is-pending');
+        const pts = [];
+        if (pendUp > 0) pts.push(`待上传 ${pendUp} 张`);
+        if (pendDel > 0) pts.push(`待移入回收站 ${pendDel} 张`);
+        note.textContent = pts.join(' · ');
+      } else if (st) {
+        const acctPart = st.account_email ? `账号 ${st.account_email.split('@')[0]}` : 'AES-256-GCM 加密';
+        note.textContent = `${acctPart} · ${st.updated_str ? '最近同步 ' + st.updated_str : '已实时对齐'}`;
+      } else {
+        note.textContent = '正在读取同步状态...';
+      }
+    }
+
+    const bDrive = box.querySelector('[data-ds-role="btn-drive"]');
+    const bDriveTitle = box.querySelector('[data-ds-role="btn-drive-title"]');
+    if (bDrive) {
+      const busyD = isRunning && runMode === 'drive';
+      bDrive.disabled = isRunning;
+      bDrive.classList.toggle('is-busy', busyD);
+      if (bDriveTitle) bDriveTitle.textContent = busyD ? '正在同步谷歌云盘...' : (chEnabled ? '仅同步谷歌云盘' : '立即同步谷歌云盘');
+    }
+
+    const bChan = box.querySelector('[data-ds-role="btn-channel"]');
+    const bChanTitle = box.querySelector('[data-ds-role="btn-channel-title"]');
+    if (bChan) {
+      bChan.hidden = !chEnabled;
+      bChan.style.display = chEnabled ? '' : 'none';
+      const busyC = isRunning && runMode === 'channel';
+      bChan.disabled = isRunning || !chEnabled;
+      bChan.classList.toggle('is-busy', busyC);
+      if (bChanTitle) bChanTitle.textContent = busyC ? '正在同步到 TG 频道...' : '同步到 TG 频道';
+    }
+  });
+}
+
+async function loadDriveSyncStatus(silent = true) {
+  try {
+    const res = await fetch('/api/drive_sync', { cache: 'no-store' });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data && data.ok) {
+      const prevRunning = !!(driveSyncState && driveSyncState.task && driveSyncState.task.running);
+      driveSyncState = data;
+      applyDriveSyncUI();
+      const nowRunning = !!(data.task && data.task.running);
+      if (nowRunning) {
+        scheduleDriveSyncPoll();
+      } else {
+        stopDriveSyncPoll();
+        if (prevRunning && data.task && data.task.last_message) {
+          toast(data.task.last_message);
+        }
+      }
+      return data;
+    }
+  } catch (_) {
+    if (!silent) toast('读取谷歌同步状态失败');
+  }
+  return null;
+}
+
+function scheduleDriveSyncPoll() {
+  if (_driveSyncPollTimer) return;
+  _driveSyncPollTimer = setInterval(() => {
+    loadDriveSyncStatus(true);
+  }, 1500);
+}
+
+function stopDriveSyncPoll() {
+  if (_driveSyncPollTimer) {
+    clearInterval(_driveSyncPollTimer);
+    _driveSyncPollTimer = null;
+  }
+}
+
+async function triggerDriveSyncAction(mode) {
+  if (_driveSyncSubmitting || (driveSyncState?.task?.running)) {
+    toast('同步任务正在执行中，请稍候');
+    return;
+  }
+  _driveSyncSubmitting = true;
+  if (!driveSyncState) driveSyncState = { ok: true, task: { running: true, mode } };
+  else driveSyncState.task = { ...(driveSyncState.task || {}), running: true, mode };
+  applyDriveSyncUI();
+  try {
+    const res = await fetch('/api/drive_sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode })
+    });
+    const data = await res.json().catch(() => ({}));
+    _driveSyncSubmitting = false;
+    if (data && typeof data === 'object' && data.drive_uploaded !== undefined) {
+      driveSyncState = { ...data, ok: true };
+    }
+    if (!res.ok || data.ok === false) {
+      applyDriveSyncUI();
+      toast(data.message || '同步启动失败');
+      if (data.task?.running) scheduleDriveSyncPoll();
+      return;
+    }
+    applyDriveSyncUI();
+    toast(data.message || (mode === 'channel' ? '已开始同步到频道' : '已开始同步谷歌云'));
+    scheduleDriveSyncPoll();
+  } catch (err) {
+    _driveSyncSubmitting = false;
+    if (driveSyncState?.task) driveSyncState.task.running = false;
+    applyDriveSyncUI();
+    toast(err.message || '网络请求失败');
+  }
 }
 
 function queryMirrorAll(idName) {
@@ -6153,6 +7349,7 @@ function renderGallery(force) {
     box.append(card);
   });
   syncInactiveWorksMirror();
+  applyDriveSyncUI();
 }
 
 let searchDebounce = null;
@@ -7206,6 +8403,17 @@ window.addEventListener('keydown', (e) => {
     closeRandomPicker(true);
     return;
   }
+  const ap = document.getElementById('accountPicker');
+  if (e.key === 'Escape' && ap && ap.classList.contains('open')) {
+    e.preventDefault();
+    setAccountPickerOpen(false);
+    return;
+  }
+  if (e.key === 'Escape' && document.querySelector('.drive-sync-picker.open')) {
+    e.preventDefault();
+    closeAllDriveSyncPickers();
+    return;
+  }
   const wp = document.getElementById('warmupPicker');
   if (e.key === 'Escape' && wp && wp.classList.contains('open')) {
     e.preventDefault();
@@ -7319,6 +8527,33 @@ document.addEventListener('click', async (e) => {
     case 'refresh-status':
       if (statusLoading) break;
       loadColabStatus(true);
+      if (document.getElementById('accountPicker')?.classList.contains('open')) {
+        loadColabAccounts(true);
+      }
+      break;
+    case 'toggle-account-picker':
+      toggleAccountPicker();
+      break;
+    case 'close-account-picker':
+      setAccountPickerOpen(false);
+      break;
+    case 'refresh-accounts':
+      loadColabAccounts(true);
+      loadColabStatus(true);
+      break;
+    case 'switch-colab-account':
+      requestSwitchColabAccount(target.dataset.email || '', false);
+      break;
+    case 'toggle-acct-oauth':
+      toggleAccountOauthBox();
+      break;
+    case 'copy-acct-oauth-url':
+      if (currentOauthUrl) {
+        try { await navigator.clipboard.writeText(currentOauthUrl); toast('已复制 Google 授权链接'); } catch (_) {}
+      }
+      break;
+    case 'submit-acct-oauth':
+      submitAccountOauthCode();
       break;
     case 'toggle-power':
       toggleG4Power();
@@ -7390,6 +8625,15 @@ document.addEventListener('click', async (e) => {
     }
     case 'refresh-outputs':
       loadOutputs(true).then(() => toast('作品库已刷新'));
+      break;
+    case 'toggle-drive-sync-picker':
+      toggleDriveSyncPicker(target);
+      break;
+    case 'sync-drive':
+      triggerDriveSyncAction('drive');
+      break;
+    case 'sync-channel':
+      triggerDriveSyncAction('channel');
       break;
     case 'delete-all-tab':
       deleteAllInTab();
@@ -7695,6 +8939,8 @@ function applyPendingScrollRestore() {
 loadStudioSettings();
 loadChat();
 pollHwMetrics();
+loadDriveSyncStatus(true);
+setInterval(() => { if (!document.hidden && !_driveSyncPollTimer) loadDriveSyncStatus(true); }, 20000);
 loadOutputs(true).then(() => {
   if (currentView === 'works') applyPendingScrollRestore();
 });
