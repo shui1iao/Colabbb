@@ -2968,13 +2968,20 @@ class PanelHandler(BaseHTTPRequestHandler):
     def _client_real_ip(self) -> str:
         peer = self.client_address[0] if self.client_address else "unknown"
         if _is_trusted_proxy_ip(peer):
+            # Prefer rightmost X-Forwarded-For appended by the trusted local reverse proxy
+            # rather than client-spoofable X-Real-IP.
+            xff = self.headers.get("X-Forwarded-For") or ""
+            for cand in reversed([p.strip() for p in xff.split(",") if p.strip()]):
+                try:
+                    return str(ipaddress.ip_address(cand))
+                except ValueError:
+                    continue
             real_ip = (self.headers.get("X-Real-IP") or "").strip()
             if real_ip:
-                return real_ip
-            xff = self.headers.get("X-Forwarded-For") or ""
-            parts = [p.strip() for p in xff.split(",") if p.strip()]
-            if parts:
-                return parts[-1]
+                try:
+                    return str(ipaddress.ip_address(real_ip))
+                except ValueError:
+                    pass
         return peer
 
     def _is_internal_request(self) -> bool:
@@ -2989,6 +2996,9 @@ class PanelHandler(BaseHTTPRequestHandler):
     def _check_csrf_origin(self) -> bool:
         if self._is_internal_request():
             return True
+        fetch_site = (self.headers.get("Sec-Fetch-Site") or "").strip().lower()
+        if fetch_site == "cross-site":
+            return False
         origin = (self.headers.get("Origin") or "").strip()
         referer = (self.headers.get("Referer") or "").strip()
         if not origin and not referer:
