@@ -20,7 +20,8 @@ def identity(pid=None):
     pid = os.getpid() if pid is None else int(pid)
     try:
         # comm can contain spaces and ')'; fields after the last ')' start at 3.
-        fields = open('/proc/%d/stat' % pid).read().rsplit(')', 1)[1].split()
+        with open('/proc/%d/stat' % pid) as fh:
+            fields = fh.read().rsplit(')', 1)[1].split()
         if fields[0] == 'Z':
             return None
         return [pid, fields[19]]
@@ -71,11 +72,13 @@ class Guard:
         return value
 
     def boot(self):
-        return open('/proc/sys/kernel/random/boot_id').read().strip()
+        with open('/proc/sys/kernel/random/boot_id') as fh:
+            return fh.read().strip()
 
     def generation(self):
         try:
-            return open(self.genpath).read().strip()
+            with open(self.genpath) as fh:
+                return fh.read().strip()
         except FileNotFoundError:
             return '0'
 
@@ -108,7 +111,8 @@ class Guard:
 
     def read(self, repair=False):
         try:
-            data = json.load(open(self.path))
+            with open(self.path) as fh:
+                data = json.load(fh)
             last = data['last']
             limit, retry = data.get('limit', 1800), data.get('retry_at', 0)
             attempts = data.get('attempts', 0)
@@ -157,7 +161,7 @@ class Guard:
             fd = os.open(self.prefix + '.busy', os.O_RDWR | os.O_CREAT, 0o600)
             try:
                 fcntl.flock(fd, fcntl.LOCK_SH)
-                data.update(busy=True, phase='running', error=None)
+                data.update(busy=True, phase='running', error=None, attempts=0, retry_at=0)
                 data['last'] = max(data['last'], self.now())
                 self.write(data)
             except BaseException:
@@ -230,6 +234,42 @@ class Guard:
             owner = data.get('stop_owner')
             return (not owner or identity(owner[0]) != owner) and self.now() >= data.get('retry_at', 0)
 
+    def _rotate_log(self, max_bytes=2 * 1024 * 1024):
+        log_path = self.prefix + '.log'
+        try:
+            if os.path.isfile(log_path) and os.path.getsize(log_path) > max_bytes:
+                os.replace(log_path, log_path + '.1')
+        except OSError:
+            pass
+
+    def _cleanup_old_watch_locks(self, current_lock_path):
+        prefix_base = os.path.basename(self.prefix) + '.watch-'
+        try:
+            entries = os.listdir(self.root)
+        except OSError:
+            return
+        for name in entries:
+            if not (name.startswith(prefix_base) and name.endswith('.lock')):
+                continue
+            cand = os.path.join(self.root, name)
+            if cand == current_lock_path:
+                continue
+            try:
+                cfd = os.open(cand, os.O_RDWR)
+            except OSError:
+                continue
+            try:
+                try:
+                    fcntl.flock(cfd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    continue
+                try:
+                    os.unlink(cand)
+                except OSError:
+                    pass
+            finally:
+                os.close(cfd)
+
     def ensure_watcher(self, cli, minutes):
         # Stable lock inode per generation; no PID is ever signalled/unlinked.
         with self.gate():
@@ -240,12 +280,15 @@ class Guard:
                 return
             generation = self.generation()
             suffix = hashlib.sha256(generation.encode()).hexdigest()
-            fd = os.open(self.prefix + '.watch-' + suffix + '.lock', os.O_RDWR | os.O_CREAT, 0o600)
+            lock_path = self.prefix + '.watch-' + suffix + '.lock'
+            fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
             try:
                 try:
                     fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 except BlockingIOError:
                     return
+                self._cleanup_old_watch_locks(lock_path)
+                self._rotate_log()
                 with open(self.prefix + '.log', 'a') as log:
                     subprocess.Popen([sys.executable, cli, '_idle_watch', self.session,
                                       generation, str(fd)], pass_fds=(fd,),
@@ -274,6 +317,9 @@ class Guard:
                         data = self.read()
                         limit = data.get('limit', 1800)
                         if limit <= 0 or data['phase'] == 'stopped':
+                            return
+                        if data['phase'] == 'failed' and data.get('attempts', 0) >= 3:
+                            print('[idle] automatic shutdown retry budget exhausted (attempts=3); watcher exiting', file=sys.stderr, flush=True)
                             return
                     if self.retry_due(generation):
                         stop(generation)

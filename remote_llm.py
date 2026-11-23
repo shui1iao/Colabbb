@@ -357,8 +357,16 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         if self.path == "/generate":
-            length = int(self.headers.get("Content-Length", "0"))
-            data = json.loads(self.rfile.read(length).decode("utf-8", errors="ignore") or "{}")
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if length < 0 or length > 4 * 1024 * 1024:
+                    raise ValueError("invalid Content-Length")
+                data = json.loads(self.rfile.read(length).decode("utf-8", errors="ignore") or "{}")
+                if not isinstance(data, dict):
+                    raise ValueError("body must be JSON object")
+            except (ValueError, json.JSONDecodeError) as exc:
+                self._send({"ok": False, "error": f"bad request: {exc}"}, 400)
+                return
             raw_msgs = data.get("messages") or []
             prompt = (data.get("prompt") or "").strip()
             raw_sys = data.get("system")
@@ -427,7 +435,7 @@ class Handler(BaseHTTPRequestHandler):
                 spec = MODEL_SPECS[CURRENT_KEY]
 
             os.makedirs("/content/outputs/llm", exist_ok=True)
-            out_path = f"/content/outputs/llm/llm_{int(time.time())}.md"
+            out_path = f"/content/outputs/llm/llm_{int(time.time())}_{os.urandom(3).hex()}.md"
             with open(out_path, "w", encoding="utf-8") as fh:
                 fh.write(reply + "\n")
 
@@ -526,12 +534,23 @@ def ensure_llm_server_and_tunnel(port=8189):
         fh.write(base64.b64decode(tunnel_key_b64))
     os.chmod(tmp_kp, 0o600)
     os.replace(tmp_kp, key_path)
-    res = subprocess.run(["pgrep", "-f", f"{LLM_TUNNEL_PORT}:127.0.0.1:{port}"], capture_output=True, text=True)
+    res = subprocess.run(["pgrep", "-f", f"{LLM_TUNNEL_PORT}:127.0.0.1:{port}"], capture_output=True, text=True, timeout=10)
     if res.returncode != 0:
+        host_pub = os.environ.get("COLABBB_TUNNEL_HOST_PUBKEY", "").strip()
+        if host_pub:
+            kh_path = "/tmp/.colabbb_known_hosts"
+            kh_tmp = f"{kh_path}.{os.getpid()}"
+            host_entry = tunnel_host if tunnel_port == "22" else f"[{tunnel_host}]:{tunnel_port}"
+            with open(kh_tmp, "w", encoding="utf-8") as kh:
+                kh.write(f"{host_entry} {host_pub}\n")
+            os.chmod(kh_tmp, 0o600)
+            os.replace(kh_tmp, kh_path)
+            host_opts = ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-o", f"UserKnownHostsFile={kh_path}"]
+        else:
+            host_opts = ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", "-o", "UserKnownHostsFile=/tmp/.colabbb_known_hosts"]
         subprocess.Popen([
             "ssh", "-N", "-T",
-            "-o", "StrictHostKeyChecking=no",
-            "-o", "UserKnownHostsFile=/dev/null",
+            *host_opts,
             "-o", "ServerAliveInterval=20",
             "-o", "ServerAliveCountMax=3",
             "-o", "ExitOnForwardFailure=yes",

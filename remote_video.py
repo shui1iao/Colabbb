@@ -163,12 +163,23 @@ def ensure_tunnel(port: int = 8188):
         fh.write(base64.b64decode(tunnel_key_b64))
     os.chmod(tmp_kp, 0o600)
     os.replace(tmp_kp, key_path)
-    if subprocess.run(["pgrep", "-f", f"{COMFY_TUNNEL_PORT}:127.0.0.1:{port}"], capture_output=True).returncode == 0:
+    if subprocess.run(["pgrep", "-f", f"{COMFY_TUNNEL_PORT}:127.0.0.1:{port}"], capture_output=True, timeout=10).returncode == 0:
         return
+    host_pub = os.environ.get("COLABBB_TUNNEL_HOST_PUBKEY", "").strip()
+    if host_pub:
+        kh_path = "/tmp/.colabbb_known_hosts"
+        kh_tmp = f"{kh_path}.{os.getpid()}"
+        host_entry = tunnel_host if tunnel_port == "22" else f"[{tunnel_host}]:{tunnel_port}"
+        with open(kh_tmp, "w", encoding="utf-8") as kh:
+            kh.write(f"{host_entry} {host_pub}\n")
+        os.chmod(kh_tmp, 0o600)
+        os.replace(kh_tmp, kh_path)
+        host_opts = ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-o", f"UserKnownHostsFile={kh_path}"]
+    else:
+        host_opts = ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", "-o", "UserKnownHostsFile=/tmp/.colabbb_known_hosts"]
     subprocess.Popen([
         "ssh", "-N", "-T",
-        "-o", "StrictHostKeyChecking=no",
-        "-o", "UserKnownHostsFile=/dev/null",
+        *host_opts,
         "-o", "ServerAliveInterval=20",
         "-o", "ServerAliveCountMax=3",
         "-o", "ExitOnForwardFailure=yes",
@@ -485,7 +496,10 @@ def _run_comfy_video_job(wf: dict, out_dir: str, seed: int, width: int, height: 
             flush=True,
         )
 
+    poll_deadline = time.monotonic() + 1800.0
     while True:
+        if time.monotonic() > poll_deadline:
+            raise RuntimeError(f"ComfyUI 视频生成轮询超时 (>1800s, prompt_id={prompt_id})")
         time.sleep(1.2)
         hist = json.loads(urllib.request.urlopen(f"http://127.0.0.1:8188/history/{prompt_id}", timeout=15).read().decode())
         if prompt_id in hist:
@@ -518,6 +532,7 @@ def _run_comfy_video_job(wf: dict, out_dir: str, seed: int, width: int, height: 
                                 )
                                 print(f"COLAB_AI_OUTPUT_FILE={out_f}", flush=True)
                                 return out_f
+            raise RuntimeError(f"ComfyUI 视频任务已完成但未产出任何输出文件 (prompt_id={prompt_id})")
 
 
 def main():

@@ -309,6 +309,7 @@ MODULES = {
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 from idle_guard import Guard, IdleError
+from colab_startup import PendingError, read_pending
 
 
 def _resolve_colab_python() -> str:
@@ -393,6 +394,19 @@ def _build_remote_env_flags(extra_env: dict = None) -> list:
         env_map["COLABBB_TUNNEL_HOST"] = tunnel_host
     env_map["COLABBB_TUNNEL_PORT"] = tunnel_port
     env_map["COLABBB_TUNNEL_USER"] = tunnel_user
+    host_pub = os.environ.get("COLABBB_TUNNEL_HOST_PUBKEY", "").strip()
+    if not host_pub:
+        host_pub_file = os.path.join(STATE_DIR, "ssh_host_ed25519_key.pub")
+        if os.path.isfile(host_pub_file):
+            try:
+                with open(host_pub_file, "r", encoding="utf-8") as hpf:
+                    parts = hpf.read().strip().split()
+                if len(parts) >= 2:
+                    host_pub = f"{parts[0]} {parts[1]}"
+            except OSError:
+                pass
+    if host_pub:
+        env_map["COLABBB_TUNNEL_HOST_PUBKEY"] = host_pub
 
     civ_tok = _read_optional_secret("CIVITAI_TOKEN", ".civitai_token")
     hf_tok = _read_optional_secret("HF_TOKEN", ".hf_token")
@@ -452,8 +466,10 @@ def _keepalive_paths(session: str):
 def _keepalive_due(session: str, cooldown_sec: int = KERNEL_KEEPALIVE_COOLDOWN) -> bool:
     _, state_p, _ = _keepalive_paths(session)
     try:
-        st = json.load(open(state_p, "r", encoding="utf-8"))
-        boot = open("/proc/sys/kernel/random/boot_id").read().strip()
+        with open(state_p, "r", encoding="utf-8") as fh:
+            st = json.load(fh)
+        with open("/proc/sys/kernel/random/boot_id", "r", encoding="utf-8") as bfh:
+            boot = bfh.read().strip()
         now_m = time.monotonic()
         if st.get("boot") == boot and isinstance(st.get("mono"), (int, float)) and 0 <= now_m - st["mono"] < cooldown_sec:
             return False
@@ -465,7 +481,8 @@ def _keepalive_due(session: str, cooldown_sec: int = KERNEL_KEEPALIVE_COOLDOWN) 
 def _write_keepalive_stamp(session: str, endpoint: str, status: str):
     _, state_p, _ = _keepalive_paths(session)
     try:
-        boot = open("/proc/sys/kernel/random/boot_id").read().strip()
+        with open("/proc/sys/kernel/random/boot_id", "r", encoding="utf-8") as bfh:
+            boot = bfh.read().strip()
         payload = {"boot": boot, "mono": time.monotonic(), "ts": time.time(), "endpoint": endpoint, "status": status}
         tmp_p = state_p + ".tmp"
         with open(tmp_p, "w", encoding="utf-8") as fh:
@@ -617,19 +634,106 @@ def session_start_lock(session: str, timeout=None):
                     if time.monotonic() >= deadline:
                         raise IdleError("session transition lock timed out; shutdown unconfirmed")
                     time.sleep(0.05)
-        try:
-            yield lock
-        finally:
-            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+        # Close without explicit LOCK_UN: a live allocation child inherits this
+        # open file description and keeps the flock even if parent exits mid-POST.
+        yield lock
 
 
 def _set_start_pending(lock, pending: bool):
+    lock.seek(0)
+    if not pending and lock.read().strip() == "NEW_UNCONFIRMED":
+        return  # Legacy has no identity: only explicit verified operator cleanup.
     lock.seek(0)
     lock.truncate()
     if pending:
         lock.write("NEW_UNCONFIRMED\n")
     lock.flush()
     os.fsync(lock.fileno())
+
+
+def _startup_call(action, lock, session, gpu):
+    _check_generation(session)
+    guard = idle_guard(session)
+    generation = os.environ.get("COLAB_AI_GENERATION")
+    if generation is None:
+        generation = guard.generation()
+    try:
+        res = subprocess.run(
+            [
+                _resolve_colab_python(),
+                os.path.join(BASE_DIR, "colab_startup.py"),
+                action,
+                str(lock.fileno()),
+                session,
+                gpu,
+                guard.genpath,
+                generation,
+            ],
+            pass_fds=(lock.fileno(),),
+            capture_output=True,
+            text=True,
+            timeout=140,
+            env=dict(os.environ, COLAB_CLI_ASSIGN_RETRIES="0", COLAB_CLI_REQUEST_TIMEOUT="60"),
+        )
+        lines = [x for x in res.stdout.splitlines() if x.startswith("COLAB_AI_STARTUP=")]
+        if res.returncode == 0 and lines:
+            result = json.loads(lines[-1].split("=", 1)[1])
+            if isinstance(result, dict) and result.get("status") in (
+                "prepared", "allocated", "empty", "wait", "retryable", "rejected", "blocked"
+            ):
+                return result
+    except (subprocess.SubprocessError, OSError, ValueError):
+        pass
+    return {"status": "blocked", "message": "分配子进程结果未确认；保留原请求身份，请稍后再点开机核对。"}
+
+
+def _recover_start_locked(lock, session, gpu):
+    try:
+        read_pending(lock, session, gpu)
+    except (PendingError, OSError) as exc:
+        raise SystemExit("[colab-ai] " + (str(exc) if isinstance(exc, PendingError) else "启动保护读取失败；拒绝创建。")) from None
+    result = _startup_call("prepare", lock, session, gpu)
+    if result["status"] != "prepared":
+        raise SystemExit("[colab-ai] " + result.get("message", "启动身份核对失败；保留保护。"))
+    print(f"[colab-ai] 正在核对/恢复 Colab {gpu} 分配（同一请求身份）...", flush=True)
+    for attempt in range(2):
+        _check_generation(session)
+        pending = read_pending(lock, session, gpu)
+        delay = min(15.0, max(0.0, pending["last_post_at"] + 15 - time.time()))
+        if delay:
+            print("[colab-ai] Google 分配尚未确认，正在等待后核对重试（约15秒间隔）...", flush=True)
+            deadline = time.monotonic() + delay
+            while time.monotonic() < deadline:
+                _check_generation(session)
+                time.sleep(min(0.25, max(0, deadline - time.monotonic())))
+        _check_generation(session)
+        if _auto_attach_remote_session_locked(session):
+            _set_start_pending(lock, False)
+            return
+        result = _startup_call("attempt", lock, session, gpu)
+        _check_generation(session)
+        if result["status"] == "allocated":
+            return
+        print("[colab-ai] Google 分配未确认，正在权威核对已有实例；不会另建请求...", flush=True)
+        if _auto_attach_remote_session_locked(session):
+            _set_start_pending(lock, False)
+            return
+        queried = _startup_call("query", lock, session, gpu)
+        _check_generation(session)
+        if queried["status"] == "allocated":
+            return
+        if queried["status"] != "empty":
+            raise SystemExit("[colab-ai] " + queried.get("message", "请求身份核对失败；保留启动保护。"))
+        if result["status"] == "rejected":
+            _set_start_pending(lock, False)
+            code_hint = f" (HTTP {result['http_status']})" if result.get("http_status") else ""
+            raise SystemExit(f"[colab-ai] Google 拒绝了本次分配请求{code_hint}；已核对确认无运行中实例并自动清理启动保护。")
+        if result["status"] != "retryable" or attempt == 1:
+            message = result.get("message") or (
+                "Google 暂时分配失败；本次有限恢复已结束，请稍后再点开机（或先关机/切号自动核对清理），将继续核对同一请求，不保证分配成功。"
+                if result["status"] == "retryable" else
+                "分配被拒绝或响应异常；保留原请求身份，请稍后再点开机核对，不会盲目新建。")
+            raise SystemExit("[colab-ai] " + message)
 
 
 def auto_attach_remote_session(session: str) -> bool:
@@ -788,20 +892,13 @@ def ensure_session(session: str, gpu: str, idle_min: int, allow_create: bool = T
         if not allow_create:
             _lifecycle_event("session_decision", decision="refuse_create", old_endpoint=_local_endpoint(session))
             raise SystemExit("[colab-ai] 当前未开机，请先开机。")
-        lock.seek(0)
-        if lock.read().strip():
-            raise SystemExit("[colab-ai] 上次创建结果尚未确认且远端仍为空；拒绝再次创建，请先核实远端状态。")
-        _check_generation()
-        _set_start_pending(lock, True)
-        _lifecycle_event("session_decision", decision="new", old_endpoint=_local_endpoint(session))
-        print(f"[colab-ai] 正在开启 Colab {gpu} 实例 (session={session})...", flush=True)
+        _check_generation(session)
+        _lifecycle_event("session_decision", decision="recover_or_new", old_endpoint=_local_endpoint(session))
         try:
-            env = dict(os.environ, COLAB_CLI_ASSIGN_RETRIES="0")
-            subprocess.run([COLAB_BIN, "new", "-s", session, "--gpu", gpu], check=True, env=env)
-        except (subprocess.SubprocessError, OSError) as exc:
-            _lifecycle_event("new_call_end", result="unconfirmed", error_type=type(exc).__name__, endpoint=_local_endpoint(session))
+            _recover_start_locked(lock, session, gpu)
+        except (Exception, SystemExit):
             start_idle_watcher(session, idle_min)
-            raise SystemExit("[colab-ai] 创建结果未确认；已保留启动保护，禁止盲目再次创建。") from None
+            raise
         _lifecycle_event("new_call_end", result="returned_success", endpoint=_local_endpoint(session))
         start_idle_watcher(session, idle_min)
         ready = False
@@ -1169,8 +1266,12 @@ def _submit_comfy_tunnel(wf: dict, label: str, prefix: str, width: int, height: 
     resp = json.loads(urllib.request.urlopen(req, timeout=20).read().decode())
     prompt_id = resp["prompt_id"]
     print(f"[{out_subdir}] 已通过并行隧道提交 {label} 任务 (prompt_id={prompt_id}, {width}x{height}, steps={steps})...", flush=True)
+    poll_timeout = 1800.0 if out_subdir == "video" else 600.0
+    poll_deadline = time.monotonic() + poll_timeout
     while True:
         _check_generation()
+        if time.monotonic() > poll_deadline:
+            raise SystemExit(f"[colab-ai] ComfyUI 任务轮询超时 (>{int(poll_timeout)}s, prompt_id={prompt_id})")
         time.sleep(0.35)
         hist = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{COMFY_TUNNEL_PORT}/history/{prompt_id}", timeout=15).read().decode())
         if prompt_id in hist:
@@ -1199,6 +1300,7 @@ def _submit_comfy_tunnel(wf: dict, label: str, prefix: str, width: int, height: 
                                 print(f"[{out_subdir}] {label} 生成完成 ({dt:.2f}s, {width}x{height}, steps={steps}, seed={seed})", flush=True)
                                 print(f"[colab-ai] 已回传至宿主机本地: {lpath}", flush=True)
                                 return lpath
+            raise SystemExit(f"[colab-ai] ComfyUI 任务已结束但未产出任何输出文件 (prompt_id={prompt_id})")
 
 
 IMAGE_KEYS = ("v5_int8",)
@@ -1624,9 +1726,9 @@ def cmd_stop(session: str, _claim=None):
             return
         attempt = True
         start_idle_watcher(session, DEFAULT_IDLE_MIN)
-        with session_start_lock(session, timeout=30):
+        with session_start_lock(session, timeout=30) as lock:
             _check_generation(session)
-            if _auto_attach_remote_session_locked(session):
+            def _stop_attached_now():
                 print("[lifecycle] stop requested; automatic retry fenced", flush=True)
                 target_endpoint = _local_endpoint(session)
                 _lifecycle_event("stop_call_begin", call_type=call_type, generation=token, endpoint=target_endpoint, operation="sdk_stop_shutdown_and_unassign")
@@ -1638,6 +1740,27 @@ def cmd_stop(session: str, _claim=None):
                 _lifecycle_event("stop_call_end", call_type=call_type, generation=token, endpoint=target_endpoint, result="returned_success")
                 if _auto_attach_remote_session_locked(session):
                     raise IdleError("关机后实例仍在，未确认释放")
+
+            if _auto_attach_remote_session_locked(session):
+                _stop_attached_now()
+
+            try:
+                pending = read_pending(lock, session, allow_legacy=True)
+            except (PendingError, OSError) as exc:
+                raise IdleError(f"启动保护读取异常，保留原记录: {exc}") from None
+            if pending is not None and not pending.get("legacy"):
+                queried = _startup_call("query", lock, session, pending["gpu"])
+                if queried["status"] == "allocated":
+                    _stop_attached_now()
+                    queried = _startup_call("query", lock, session, pending["gpu"])
+                if queried["status"] == "empty":
+                    if _auto_attach_remote_session_locked(session):
+                        raise IdleError("核对原启动请求后仍检测到活跃实例，未确认释放")
+                    _set_start_pending(lock, False)
+                    print("[colab-ai] 已核对原启动请求无实例并清理启动保护。", flush=True)
+                else:
+                    raise IdleError(queried.get("message") or "原启动请求核对未确认，保留启动保护")
+
             guard.finish_stop(token, True)
             _lifecycle_event("stop_verified_empty", call_type=call_type, generation=token)
             print("[colab-ai] 已确认无活跃实例。", flush=True)

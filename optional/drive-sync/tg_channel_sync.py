@@ -383,10 +383,18 @@ def run_sync(notify_chat_id: int = 0, progress_msg_id: int = 0, progress_cb=None
 
         cloud = Cloud()
         folder_id = cloud.folder()
+        lock_path = root_dir() / "worker.lock"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
         try:
-            sync_once(cloud, folder_id, force_retry=True)
-        except Exception:
-            pass
+            with open(lock_path, "a+") as wlk:
+                try:
+                    fcntl.flock(wlk.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    print("[tg_channel_sync] drive_sync daemon holds worker.lock; skipping inline sync_once", flush=True)
+                else:
+                    sync_once(cloud, folder_id, force_retry=True)
+        except Exception as exc:
+            print(f"[tg_channel_sync] inline sync_once error: {exc}", flush=True)
 
         drive_files = list_drive_active_images(cloud, folder_id)
         active_map = {f["id"]: f for f in drive_files}

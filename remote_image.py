@@ -257,12 +257,23 @@ def ensure_tunnel(port: int = 8188):
         fh.write(base64.b64decode(tunnel_key_b64))
     os.chmod(tmp_kp, 0o600)
     os.replace(tmp_kp, key_path)
-    if subprocess.run(["pgrep", "-f", f"{COMFY_TUNNEL_PORT}:127.0.0.1:{port}"], capture_output=True).returncode == 0:
+    if subprocess.run(["pgrep", "-f", f"{COMFY_TUNNEL_PORT}:127.0.0.1:{port}"], capture_output=True, timeout=10).returncode == 0:
         return
+    host_pub = os.environ.get("COLABBB_TUNNEL_HOST_PUBKEY", "").strip()
+    if host_pub:
+        kh_path = "/tmp/.colabbb_known_hosts"
+        kh_tmp = f"{kh_path}.{os.getpid()}"
+        host_entry = tunnel_host if tunnel_port == "22" else f"[{tunnel_host}]:{tunnel_port}"
+        with open(kh_tmp, "w", encoding="utf-8") as kh:
+            kh.write(f"{host_entry} {host_pub}\n")
+        os.chmod(kh_tmp, 0o600)
+        os.replace(kh_tmp, kh_path)
+        host_opts = ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-o", f"UserKnownHostsFile={kh_path}"]
+    else:
+        host_opts = ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", "-o", "UserKnownHostsFile=/tmp/.colabbb_known_hosts"]
     subprocess.Popen([
         "ssh", "-N", "-T",
-        "-o", "StrictHostKeyChecking=no",
-        "-o", "UserKnownHostsFile=/dev/null",
+        *host_opts,
         "-o", "ServerAliveInterval=20",
         "-o", "ServerAliveCountMax=3",
         "-o", "ExitOnForwardFailure=yes",
@@ -749,7 +760,10 @@ def _submit_and_collect(wf: dict, label: str, width: int, height: int, steps: in
     prompt_id = resp["prompt_id"]
     print(f"[image] 已提交 {label} 任务 (prompt_id={prompt_id}, {width}x{height}, steps={steps})，正在生成...", flush=True)
 
+    poll_deadline = time.monotonic() + 600.0
     while True:
+        if time.monotonic() > poll_deadline:
+            raise RuntimeError(f"ComfyUI 生图轮询超时 (>600s, prompt_id={prompt_id})")
         time.sleep(0.8)
         hist = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{port}/history/{prompt_id}", timeout=15).read().decode())
         if prompt_id in hist:

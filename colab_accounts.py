@@ -251,18 +251,19 @@ def get_active_account_summary() -> dict:
 
 
 def get_drive_sync_token_json(preferred_email: str = None) -> str:
-    """获取固定绑定于 Google Drive 加密同步的账号 OAuth 凭证，不受切换算力账号影响。"""
+    """获取固定绑定于 Google Drive 加密同步的账号 OAuth 凭证，严格 fail-closed，绝不回退到其他算力账号 keyring。"""
     reg = load_registry()
-    target = _norm_email(preferred_email or reg.get("drive_sync_email") or _default_primary_email() or reg.get("active_email"))
-    if target:
-        tpath = token_path_for(target)
-        if os.path.isfile(tpath):
-            with open(tpath, "r", encoding="utf-8") as fh:
-                data = fh.read().strip()
-            if data:
-                return data
-    from colab_cli.auth import _get_token_from_keyring
-    return _get_token_from_keyring() or ""
+    target = _norm_email(preferred_email or reg.get("drive_sync_email") or _default_primary_email())
+    if not target:
+        return ""
+    tpath = token_path_for(target)
+    if not os.path.isfile(tpath):
+        return ""
+    try:
+        with open(tpath, "r", encoding="utf-8") as fh:
+            return fh.read().strip()
+    except OSError:
+        return ""
 
 
 def _load_credentials_for_email(email: str):
@@ -402,6 +403,68 @@ def _clear_ephemeral_kernel_stamps():
                 pass
 
 
+def _reconcile_start_pending_for_switch(slk, current_email: str, cur_creds):
+    """Authoritatively reconcile session-start lock before account switch."""
+    import uuid as _uuid
+    from colab_cli.client import Assignment, Client, GetAssignmentResponse, Prod
+    from colab_cli.commands.session import resolve_runtime_options
+    from google.auth.transport.requests import AuthorizedSession
+    from colab_startup import PendingError, read_pending
+
+    sess = (os.environ.get("COLAB_SESSION", "ai") or "ai").strip() or "ai"
+    try:
+        pending = read_pending(slk, sess, allow_legacy=True)
+    except PendingError as exc:
+        return "blocked", str(exc), {"start_unconfirmed": True}
+    except Exception:
+        return "blocked", "启动保护读取异常，保留原记录并拒绝切换", {"start_unconfirmed": True}
+
+    if pending is None:
+        return "clear", "", {}
+    if pending.get("legacy"):
+        return "blocked", "旧启动保护没有请求身份，须先人工核实清理后再切换", {"start_unconfirmed": True}
+    if not current_email or pending["account"]["email"] != current_email:
+        return "blocked", "启动保护记录所属账号与当前账号不一致，拒绝切换", {"start_unconfirmed": True}
+    if pending["phase"] in ("posting", "unconfirmed") and pending["last_post_at"] > 0:
+        elapsed = time.time() - pending["last_post_at"]
+        if elapsed < 20.0:
+            wait_s = max(1, int(math.ceil(20.0 - elapsed)))
+            return (
+                "blocked",
+                f"上次创建请求刚刚超时，请等待约 {wait_s} 秒后再切换以防后台孤儿实例",
+                {"start_unconfirmed": True, "retry_after": wait_s},
+            )
+    if cur_creds is None:
+        return "blocked", "当前账号授权不可用，无法核对上次创建状态；保留启动保护并中止切换", {"start_unconfirmed": True}
+
+    try:
+        auth = AuthorizedSession(cur_creds, max_refresh_attempts=0)
+        ui_resp = auth.get("https://www.googleapis.com/oauth2/v3/userinfo", timeout=15)
+        ui_resp.raise_for_status()
+        info = ui_resp.json()
+        actual_acct = {"email": str(info.get("email", "")).strip().lower(), "sub": info.get("sub")}
+        if actual_acct != pending["account"] or info.get("email_verified") is not True:
+            return "blocked", "当前凭据与启动保护账号身份不一致，拒绝切换", {"start_unconfirmed": True}
+        variant, accelerator, shape = resolve_runtime_options(gpu=pending["gpu"], tpu=None, high_mem=False)
+        client = Client(Prod(), auth)
+        res = client._get_assignment(_uuid.UUID(pending["request_uuid"]), variant, accelerator, shape)
+    except Exception:
+        return "blocked", "无法向 Google 核对上次创建请求状态，保留启动保护并中止切换", {"start_unconfirmed": True}
+
+    if isinstance(res, Assignment):
+        return "active", "", {}
+    if isinstance(res, GetAssignmentResponse):
+        return "query_empty", "", {}
+    return "blocked", "固定请求查询响应未知，保留启动保护并拒绝切换", {"start_unconfirmed": True}
+
+
+def _truncate_start_lock_in_place(slk):
+    slk.seek(0)
+    slk.truncate()
+    slk.flush()
+    os.fsync(slk.fileno())
+
+
 def switch_active_account(
     target_email: str,
     stop_current: bool = False,
@@ -419,6 +482,10 @@ def switch_active_account(
         return False, "目标账号邮箱无效", {}
 
     with open(_switch_lock_file(), "a+", encoding="utf-8") as lk:
+        try:
+            os.fchmod(lk.fileno(), 0o600)
+        except OSError:
+            pass
         try:
             fcntl.flock(lk.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
@@ -449,7 +516,9 @@ def switch_active_account(
             except BlockingIOError:
                 return False, "当前有正在进行的开机或关机操作，请稍后再试", {"busy": True}
 
-            cur_confirmed_empty = False
+            cur_creds = None
+            cur_client = None
+            cur_assignments = []
             if current and os.path.isfile(token_path_for(current)):
                 try:
                     cur_creds = _load_credentials_for_email(current)
@@ -464,7 +533,14 @@ def switch_active_account(
                         {"check_failed": True},
                     )
 
-                if len(cur_assignments) > 0:
+            pending_state, pending_err, pending_extra = _reconcile_start_pending_for_switch(slk, current, cur_creds)
+            if pending_state == "blocked":
+                return False, pending_err, pending_extra
+
+            has_active = (len(cur_assignments) > 0) or (pending_state == "active")
+            cur_confirmed_empty = False
+            if current and cur_client is not None:
+                if has_active:
                     if not stop_current:
                         return (
                             False,
@@ -472,16 +548,30 @@ def switch_active_account(
                             {"need_stop_confirm": True, "current_email": current},
                         )
                     fcntl.flock(slk.fileno(), fcntl.LOCK_UN)
-                    res = subprocess.run(
-                        [sys.executable, cli_bin, "stop"],
-                        capture_output=True,
-                        text=True,
-                        timeout=115,
-                    )
+                    try:
+                        res = subprocess.run(
+                            [sys.executable, cli_bin, "stop"],
+                            capture_output=True,
+                            text=True,
+                            timeout=115,
+                        )
+                    except subprocess.TimeoutExpired:
+                        return (
+                            False,
+                            f"自动关闭当前账号 ({current}) 实例超时，已取消切换以防双边计费",
+                            {"stop_failed": True, "timeout": True},
+                        )
                     try:
                         fcntl.flock(slk.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
                     except BlockingIOError:
                         return False, "关机后有并发电源操作正在进行，已取消切换，请稍后重试", {"busy": True}
+                    try:
+                        slk.seek(0)
+                        still_pending = bool(slk.read().strip())
+                    except Exception:
+                        still_pending = True
+                    if still_pending:
+                        return False, "关机后启动保护仍未清理，已取消切换，请稍后重试", {"start_unconfirmed": True}
                     if res.returncode != 0:
                         return (
                             False,
@@ -498,11 +588,21 @@ def switch_active_account(
                             f"关闭后仍未确认当前账号 ({current}) 实例释放，已取消切换",
                             {"stop_failed": True},
                         )
+                elif pending_state == "query_empty":
+                    _truncate_start_lock_in_place(slk)
                 cur_confirmed_empty = True
             elif not current:
                 cur_confirmed_empty = True
 
             sess_path = _sessions_path()
+            prev_sess_raw = None
+            if os.path.isfile(sess_path):
+                try:
+                    with open(sess_path, "r", encoding="utf-8") as sf:
+                        prev_sess_raw = sf.read()
+                except OSError:
+                    prev_sess_raw = None
+
             if current:
                 try:
                     kr_tok = _get_token_from_keyring()
@@ -511,12 +611,10 @@ def switch_active_account(
                         _atomic_write_text(token_path_for(current), kr_tok, 0o600)
                 except Exception:
                     pass
-                if os.path.isfile(sess_path):
+                if prev_sess_raw is not None:
                     try:
-                        with open(sess_path, "r", encoding="utf-8") as sf:
-                            s_raw = sf.read()
-                        json.loads(s_raw or "{}")
-                        _atomic_write_text(sessions_path_for(current), s_raw, 0o600)
+                        json.loads(prev_sess_raw or "{}")
+                        _atomic_write_text(sessions_path_for(current), prev_sess_raw, 0o600)
                     except Exception:
                         pass
 
@@ -533,13 +631,18 @@ def switch_active_account(
 
             os.makedirs(os.path.dirname(sess_path), mode=0o700, exist_ok=True)
             _atomic_write_text(sess_path, restored_sessions, 0o600)
-            _save_token_to_keyring(target_token_json)
+            try:
+                _save_token_to_keyring(target_token_json)
+            except Exception:
+                if prev_sess_raw is not None:
+                    try:
+                        _atomic_write_text(sess_path, prev_sess_raw, 0o600)
+                    except OSError:
+                        pass
+                return False, f"写入目标账号 ({target}) 凭据失败，已回滚原会话状态", {"keyring_failed": True}
             _clear_ephemeral_kernel_stamps()
             if cur_confirmed_empty:
-                slk.seek(0)
-                slk.truncate()
-                slk.flush()
-                os.fsync(slk.fileno())
+                _truncate_start_lock_in_place(slk)
 
             reg["active_email"] = target
             _atomic_write_json(_registry_file(), reg, 0o600)

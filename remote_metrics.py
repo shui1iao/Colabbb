@@ -160,11 +160,22 @@ def ensure_metrics_and_tunnel():
     os.chmod(tmp_k, 0o600)
     os.replace(tmp_k, key_path)
 
-    if subprocess.run(["pgrep", "-f", f"{TUNNEL_PORT}:127.0.0.1:{LOCAL_PORT}"], capture_output=True).returncode != 0:
+    if subprocess.run(["pgrep", "-f", f"{TUNNEL_PORT}:127.0.0.1:{LOCAL_PORT}"], capture_output=True, timeout=10).returncode != 0:
+        host_pub = os.environ.get("COLABBB_TUNNEL_HOST_PUBKEY", "").strip()
+        if host_pub:
+            kh_path = "/tmp/.colabbb_known_hosts"
+            kh_tmp = f"{kh_path}.{os.getpid()}"
+            host_entry = tunnel_host if tunnel_port == "22" else f"[{tunnel_host}]:{tunnel_port}"
+            with open(kh_tmp, "w", encoding="utf-8") as kh:
+                kh.write(f"{host_entry} {host_pub}\n")
+            os.chmod(kh_tmp, 0o600)
+            os.replace(kh_tmp, kh_path)
+            host_opts = ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-o", f"UserKnownHostsFile={kh_path}"]
+        else:
+            host_opts = ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", "-o", "UserKnownHostsFile=/tmp/.colabbb_known_hosts"]
         subprocess.Popen([
             "ssh", "-N", "-T",
-            "-o", "StrictHostKeyChecking=no",
-            "-o", "UserKnownHostsFile=/dev/null",
+            *host_opts,
             "-o", "ServerAliveInterval=20",
             "-o", "ServerAliveCountMax=3",
             "-o", "ExitOnForwardFailure=yes",

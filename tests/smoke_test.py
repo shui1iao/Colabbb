@@ -187,16 +187,105 @@ def main():
                     assert parsed_json.get('enabled') is False
             assert request(logged, '/api/drive_sync', {'mode': 'drive'})[0] == 409
             assert request(logged, '/api/run', {'module': 'random', 'count': 11})[0] == 400
+            # v0.2.3 安全与健壮性回归测试
+            # 1. 跨源 Origin POST 返回 403
+            bad_origin_req = urllib.request.Request(
+                base + '/api/touch',
+                data=b'{}',
+                headers={'Content-Type': 'application/json', 'Origin': 'https://evil.example'},
+            )
+            try:
+                logged.open(bad_origin_req, timeout=5)
+                raise AssertionError('cross-origin POST should be rejected')
+            except urllib.error.HTTPError as err:
+                assert err.code == 403, err.code
+            # 2. HEAD / 不返回响应体且携带安全头
+            head_req = urllib.request.Request(base + '/', method='HEAD')
+            with logged.open(head_req, timeout=5) as hr:
+                assert hr.status == 200 and hr.read() == b''
+                assert hr.headers.get('X-Frame-Options') == 'DENY'
+                assert hr.headers.get('Server') == 'colabbb-panel'
+            # 3. /api/run 拦截非白名单 colab-ai 子命令
+            assert request(logged, '/api/run', {'module': 'image', 'text': 'colab-ai accounts'})[0] == 403
+            # 4. /api/upload 拒绝 .html，接受合法 PNG 且 /files/ 返回 sandbox CSP + Range 206
+            up_bad = urllib.request.Request(
+                base + '/api/upload?filename=xss.html',
+                data=b'<script>alert(1)</script>',
+                headers={'Content-Type': 'application/octet-stream'},
+            )
+            try:
+                logged.open(up_bad, timeout=5)
+                raise AssertionError('html upload should be rejected')
+            except urllib.error.HTTPError as err:
+                assert err.code == 400, err.code
+            png_1x1 = base64.b64decode(
+                'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
+            )
+            up_ok = urllib.request.Request(
+                base + '/api/upload?filename=ok.png',
+                data=png_1x1,
+                headers={'Content-Type': 'image/png'},
+            )
+            with logged.open(up_ok, timeout=5) as ur:
+                assert ur.status == 200
+                up_doc = json.loads(ur.read())
+                assert up_doc['ok'] and up_doc['url'].startswith('/files/upload_image/')
+            status, body, fhdrs = request(logged, up_doc['url'])
+            assert status == 200 and body == png_1x1
+            assert 'sandbox' in (fhdrs.get('Content-Security-Policy') or '')
+            assert fhdrs.get('X-Content-Type-Options') == 'nosniff'
+            range_req = urllib.request.Request(base + up_doc['url'], headers={'Range': 'bytes=0-7'})
+            with logged.open(range_req, timeout=5) as rr:
+                assert rr.status == 206 and rr.read() == png_1x1[:8]
+                assert rr.headers.get('Content-Range') == f'bytes 0-7/{len(png_1x1)}'
+            # 5. 保存非法 strip_regexes 返回 400
+            bad_cfg = json.loads(request(logged, '/api/settings')[1])['settings']
+            bad_cfg['image_prompt']['strip_regexes'] = ['[unclosed']
+            assert request(logged, '/api/settings', bad_cfg)[0] == 400
             # 热覆盖是完整模板替换，不改动权威 HTML。
             override = b'<!doctype html><html><body>override-check</body></html>'
             (state / 'panel_ui.html').write_bytes(override)
             assert request(logged, '/')[1] == override
             (state / 'panel_ui.html').unlink()
             assert request(logged, '/')[1] == (ROOT / 'ui/panel_ui.html').read_bytes()
+            # 6. 登出后服务端递增 session_version，原 Cookie 复制重放立即失效（401）
+            saved_cookie = '; '.join(f'{c.name}={c.value}' for c in cookies)
             assert request(logged, '/api/logout', {})[0] == 200
             assert request(logged, '/api/settings')[0] == 401
-            print('PASS HTTP: uninitialized fail-closed; public icons byte-identical; anonymous login 200/API 401; cookie login; authenticated HTML/JSON 200; override; logout')
+            replay_req = urllib.request.Request(base + '/api/settings', headers={'Cookie': saved_cookie})
+            try:
+                anonymous.open(replay_req, timeout=5)
+                raise AssertionError('revoked cookie should be rejected after logout')
+            except urllib.error.HTTPError as err:
+                assert err.code == 401, err.code
+            print('PASS HTTP: uninitialized fail-closed; public icons; CSRF 403; HEAD no-body; upload/sandbox/Range 206; regex validation; override; server-side logout revocation')
         finally: stop(process)
+
+        # 离线校验 v0.2.3 colab_startup、colab_accounts fail-closed 与 idle_guard
+        with mock.patch.dict(os.environ, env, clear=True):
+            import colab_startup, colab_accounts, idle_guard
+            lp = state / 'test-startup.lock'
+            with open(lp, 'w+', encoding='utf-8') as lfh:
+                assert colab_startup.read_pending(lfh, 'ai') is None
+                rec = {
+                    'version': 1, 'request_uuid': '11111111-1111-4111-8111-111111111111',
+                    'account': {'email': 'a@example.com', 'sub': 'sub-1'},
+                    'session': 'ai', 'gpu': 'G4', 'created_at': time.time() - 60,
+                    'phase': 'unconfirmed', 'post_count': 1, 'last_post_at': time.time() - 30,
+                }
+                colab_startup.write_pending(lfh, rec)
+                assert colab_startup.read_pending(lfh, 'ai', 'G4')['phase'] == 'unconfirmed'
+            assert colab_accounts.get_drive_sync_token_json('missing@example.com') == ''
+            g = idle_guard.Guard(str(state), 'ai-smoke')
+            g.touch()
+            with g.gate():
+                d = g.read()
+                d['attempts'] = 2; d['retry_at'] = time.time() + 100
+                g.write(d)
+            with g.lease():
+                d2 = g.read()
+                assert d2['attempts'] == 0 and d2['retry_at'] == 0
+            print('PASS v0.2.3 colab_startup pending, colab_accounts Drive fail-closed, idle_guard lease reset')
     print('ALL SMOKE TESTS PASSED')
 
 

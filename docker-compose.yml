@@ -21,4 +21,15 @@ services:
       # Optional proxy: enable COLABBB_ENABLE_COMFY_PROXY=1 in .env first.
       # No built-in authentication; keep this host binding on loopback.
       - "127.0.0.1:${COLABBB_COMFY_PROXY_PORT:-18188}:18188"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:17860/favicon.ico', timeout=3).read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     stop_grace_period: 20s

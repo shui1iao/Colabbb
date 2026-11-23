@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-+MuvHvS4ZYY8Z13CbVadrYNSN3JHz1qjs+OSYH5YI/4='; style-src 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; form-action 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; media-src 'self'; font-src 'none'; worker-src 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-/6kAQeFL/UaiM7tUu+0vIgAAl0v9936fizbW9y6QawE='; style-src 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; form-action 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; media-src 'self'; font-src 'none'; worker-src 'none'">
   <meta name="color-scheme" content="light dark">
   <title>G4 工作台</title>
   <link rel="icon" type="image/svg+xml" href="/g4-icon.svg?v=g5">
@@ -5894,7 +5894,7 @@ async function toggleAccountOauthBox() {
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.ok || !data.auth_url) throw new Error(data.message || '生成授权链接失败');
     currentOauthUrl = data.auth_url;
-    if (link) link.href = currentOauthUrl;
+    if (link) link.href = (typeof currentOauthUrl === 'string' && /^https:\/\//i.test(currentOauthUrl)) ? currentOauthUrl : '#';
     if (inp) inp.value = '';
     box.hidden = false;
     setTimeout(() => inp?.focus(), 60);
@@ -6214,8 +6214,11 @@ function renderTaskLedger(tasks) {
   }
 }
 
+let _pollJobInFlight = false;
 async function pollJob() {
+  if (_pollJobInFlight) return false;
   if (document.hidden && !submitting) return false;
+  _pollJobInFlight = true;
   const pollSeq = ++jobPollSeq;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10000);
@@ -6344,6 +6347,7 @@ async function pollJob() {
     return false;
   } finally {
     clearTimeout(timeout);
+    _pollJobInFlight = false;
   }
 }
 
@@ -6703,7 +6707,7 @@ function applyDriveSyncUI() {
     const fl = box.querySelector('[data-ds-role="folder-link"]');
     if (fl) {
       if (st?.folder_url) {
-        fl.href = st.folder_url;
+        fl.href = (typeof st.folder_url === 'string' && /^https:\/\//i.test(st.folder_url)) ? st.folder_url : '#';
         fl.hidden = false;
       } else {
         fl.hidden = true;

@@ -1,4 +1,4 @@
-# Colabbb v0.2.2
+# Colabbb v0.2.3
 
 面向个人自托管的 AI 视觉创作工作台：中文 Web 面板管理远端 GPU 会话、多账号并发余额与防双开切换、二阶段 3K 生图、24fps 声画视频、提示词对话与作品库。包含深浅色主题、工作流参数配置、透明品牌图标、独立 FIFO 队列、随机灵感、取消任务与闲置关机租约。
 
@@ -57,7 +57,7 @@ ComfyUI TCP 代理（可选、同容器） :18188 ──────────
 
 入口自动生成并持久化 `/data/state/tunnel_ed25519` 与 `/data/state/ssh_host_ed25519_key`，将受限公钥授权给**容器内**无 Shell 专用账户 `tunnel`。账户无可用密码，SSH 禁用密码/PAM/TTY/X11/本地转发，只允许该账户密钥登录和三个回环地址远端转发；强制 `/bin/false` 禁止执行命令。`restrict,port-forwarding,permitlisten=...` 进一步限制授权。Host Key 重建时复用，宿主机 SSH 配置完全不受影响。`COLABBB_INTERNAL_SSHD=0` 可关闭内置 sshd；如自行使用其他 SSH 端点，需自行授权密钥并覆盖用户与端口。
 
-`colab-ai` 将隧道地址/端口/用户和动态密钥经 `colab exec --env ...` 注入受信的 GPU 会话。远端目前自动接纳 SSH Host Key，因此只在可信网络与受信 GPU 环境使用；密钥可被本机高权限进程和远端环境读取，不要共享进程读取权限或将日志/环境公开。隧道端口不是通用管理 SSH 入口，不提供 Shell。
+`colab-ai` 将隧道地址/端口/用户、动态密钥及容器内置 sshd 的主机公钥（`COLABBB_TUNNEL_HOST_PUBKEY`）注入受信的 GPU 会话，远端默认通过 `StrictHostKeyChecking=yes` 固定校验宿主机公钥；密钥可被本机高权限进程和远端环境读取，不要共享进程读取权限或将日志/环境公开。隧道端口不是通用管理 SSH 入口，不提供 Shell。
 
 ## 登录态、权限与备份
 
