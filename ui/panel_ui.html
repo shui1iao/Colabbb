@@ -3,13 +3,18 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-/6kAQeFL/UaiM7tUu+0vIgAAl0v9936fizbW9y6QawE='; style-src 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; form-action 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; media-src 'self'; font-src 'none'; worker-src 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-vr67P8oBb7/cx9nJgQSiDyf2ignFgA8Th0VVGWoe5e4='; style-src 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; form-action 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; media-src 'self'; font-src 'none'; worker-src 'none'">
   <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" id="metaThemeColor" content="#EEF1F6">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>G4 工作台</title>
   <link rel="icon" type="image/svg+xml" href="/g4-icon.svg?v=g5">
   <link rel="icon" type="image/png" sizes="64x64" href="/favicon.png?v=g5">
   <link rel="shortcut icon" href="/favicon.ico?v=g5">
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=g5">
+  <link rel="manifest" href="/manifest.webmanifest">
   <style>
   /* ==========================================================================
      Colabbb Studio — Unified Design System
@@ -589,50 +594,65 @@
   }
   .filter-search::placeholder { color: var(--muted); }
 
-  /* ==================== 4. Top Unified Telemetry & Control Card (Creation View Only) ==================== */
-  .topbar {
-    position: relative;
-    z-index: 30;
-    width: 100%;
-    margin: 0;
-    padding: 0;
-    background: transparent;
+  /* ==================== 4. Unified Card Shell (Floating Sidebar Card + Top Instance Status Card + 5-Tab Mobile Bottom Nav) ==================== */
+  :root {
+    --sidebar-w: 218px;
+    --shell-gap: 14px;
+    --task-col-w: 368px;
+    --mob-nav-h: 60px;
   }
-  .topbar-inner {
-    position: relative;
+
+  body {
+    padding: 0;
+    min-height: 100dvh;
+  }
+
+  .app-shell {
+    display: flex;
+    min-height: 100dvh;
     width: 100%;
+    min-width: 0;
+  }
+
+  /* ---- Desktop Left Sidebar Card (Same Card Language: --surface, 1px --line, --r-card, --shadow-card) ---- */
+  .app-sidebar {
+    position: fixed;
+    top: var(--shell-gap);
+    left: var(--shell-gap);
+    bottom: var(--shell-gap);
+    width: var(--sidebar-w);
+    z-index: 40;
     background: var(--surface);
     border: 1px solid var(--line);
     border-radius: var(--r-card);
-    padding: 12px 16px;
     box-shadow: var(--shadow-card);
     display: flex;
     flex-direction: column;
-    gap: 11px;
-    min-width: 0;
+    min-height: 0;
+    user-select: none;
+    overflow: hidden;
   }
-  .topbar-row1 {
-    width: 100%;
+  .side-head {
+    flex: 0 0 auto;
+    padding: 13px 12px 12px 14px;
+    border-bottom: 1px solid var(--line);
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: 10px 16px;
-    min-width: 0;
+    gap: 8px;
   }
   .brand {
     display: inline-flex;
     align-items: center;
-    gap: 10px;
+    gap: 9px;
     min-width: 0;
     cursor: pointer;
     user-select: none;
   }
   .brand-mark {
-    width: 32px;
-    height: 32px;
-    flex: 0 0 32px;
-    background: transparent;
+    width: 28px;
+    height: 28px;
+    flex: 0 0 28px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -646,7 +666,6 @@
   .brand-text {
     display: flex;
     flex-direction: column;
-    gap: 1px;
     min-width: 0;
   }
   .brand-title {
@@ -659,38 +678,221 @@
     text-overflow: ellipsis;
     line-height: 1.25;
   }
+  .side-icon-btn {
+    width: 28px;
+    height: 28px;
+    flex: 0 0 28px;
+    padding: 0;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--muted);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+  }
+  .side-icon-btn:active { background: var(--press); }
+  .side-icon-btn.is-spinning .ico { animation: spinIcon 700ms linear infinite; }
+  @keyframes spinIcon { to { transform: rotate(360deg); } }
 
-  .topbar-right {
+  .side-nav-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 12px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .side-nav-group {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .side-nav-label {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--muted);
+    padding: 0 10px 4px;
+    letter-spacing: 0.02em;
+  }
+  .side-nav-btn {
+    position: relative;
+    width: 100%;
+    height: 36px;
+    padding: 0 10px 0 11px;
+    border: 0;
+    border-radius: var(--r-ctl);
+    background: transparent;
+    color: var(--fg-secondary);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    cursor: pointer;
+    text-align: left;
+    transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+  }
+  .side-nav-btn .ico {
+    width: 16px;
+    height: 16px;
+    color: var(--muted);
+    transition: color var(--t-fast) var(--ease);
+  }
+  .side-nav-btn .side-nav-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .side-nav-btn.active {
+    background: var(--blue-soft);
+    color: var(--blue);
+  }
+  .side-nav-btn.active::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 8px;
+    bottom: 8px;
+    width: 3px;
+    border-radius: 0 3px 3px 0;
+    background: var(--blue);
+  }
+  .side-nav-btn.active .ico { color: var(--blue); }
+  .side-nav-btn:active { background: var(--press); }
+  .side-nav-btn .tab-count {
+    min-width: 20px;
+    height: 18px;
+    padding: 0 6px;
+    font-size: 11px;
+    background: var(--card-3);
+    color: var(--muted);
+  }
+  .side-nav-btn.active .tab-count {
+    background: rgba(0, 113, 227, 0.16);
+    color: var(--blue);
+  }
+  html[data-theme="dark"] .side-nav-btn.active .tab-count {
+    background: rgba(59, 130, 246, 0.24);
+  }
+
+  .side-footer {
+    flex: 0 0 auto;
+    padding: 10px 12px;
+    border-top: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .side-util-note {
+    font-size: 11.5px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .side-logout-btn {
+    height: 28px;
+    padding: 0 9px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--muted);
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+  }
+  .side-logout-btn:active { background: var(--press); }
+
+  /* ---- Right Content Column (Unified Card Spacing) ---- */
+  .app-content {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin-left: calc(var(--sidebar-w) + var(--shell-gap));
+    padding: var(--shell-gap);
+    display: flex;
+    flex-direction: column;
+    gap: var(--shell-gap);
+    min-height: 100dvh;
+    max-width: 1580px;
+  }
+
+  /* ---- Unified Top Instance Status Card (Present Across ALL Pages, Matching Card Surface) ---- */
+  .top-status-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--r-card);
+    padding: 12px 16px;
+    box-shadow: var(--shadow-card);
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+    min-width: 0;
+  }
+  .top-card-row1 {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px 14px;
+    min-width: 0;
+  }
+  .top-card-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+  .mob-header-brand {
+    display: none;
+    align-items: center;
+    gap: 7px;
+    flex-shrink: 0;
+  }
+  .mob-header-brand .brand-mark { width: 25px; height: 25px; flex: 0 0 25px; }
+  .page-header-title {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    color: var(--fg);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .page-header-sub {
+    font-size: 12px;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+  .top-card-right {
     display: flex;
     align-items: center;
     justify-content: flex-end;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: 7px;
     min-width: 0;
+    margin-left: auto;
   }
-  .topbar-metrics {
+  .top-compute-group {
     display: inline-flex;
     align-items: center;
     gap: 6px;
     flex-wrap: wrap;
     min-width: 0;
   }
-  .topbar-sep {
-    width: 1px;
-    height: 18px;
-    background: var(--line);
-    margin: 0 2px;
-  }
-  .topbar-controls {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: nowrap;
-    flex-shrink: 0;
-    min-width: 0;
-  }
-
-  /* Status Capsules (Studio .state + Surface Pill) */
   .status-pill {
     display: inline-flex;
     align-items: center;
@@ -721,51 +923,134 @@
   .status-pill.off { background: var(--red-soft); }
   .status-pill.off .dot { background: var(--red); }
   .status-pill.off .status-state { color: var(--red); }
-  .status-sep { color: var(--muted); font-weight: 400; margin: 0 3px; opacity: 0.7; }
+  .status-sep { color: var(--muted); font-weight: 400; margin: 0 2px; opacity: 0.7; }
   .status-meta { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
-  #cuText { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
-  .cu-acct-desk, .cu-acct-mob { color: var(--fg-secondary); font-weight: 500; }
-  .cu-acct-mob { display: none; }
-  .cu-acct-desk[hidden], .cu-acct-mob[hidden], #cuAcctSep[hidden] { display: none !important; }
-  .cu-chevron {
-    width: 12px;
-    height: 12px;
-    flex: 0 0 12px;
-    color: var(--muted);
-    margin-left: 1px;
-    transition: transform var(--t) var(--ease), color var(--t-fast) var(--ease);
+
+  .hdr-cu-btn {
+    height: 32px;
+    padding: 0 11px;
+    border: 0;
+    border-radius: var(--r-ctl);
+    background: var(--card-2);
+    color: var(--fg);
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    white-space: nowrap;
+    min-width: 0;
+    transition: background-color var(--t-fast) var(--ease);
   }
-  #cuBadge[aria-expanded="true"] { background: var(--blue-soft); }
-  #cuBadge[aria-expanded="true"] .cu-chevron { transform: rotate(180deg); color: var(--blue); }
-  @media (hover: hover) and (pointer: fine) {
-    .status-pill[role="button"]:hover { background: var(--hover); }
-    .status-pill.on[role="button"]:hover { background: var(--green-soft); filter: brightness(0.97); }
-    .status-pill.off[role="button"]:hover { background: var(--red-soft); filter: brightness(0.97); }
-    #cuBadge[aria-expanded="true"]:hover { background: var(--blue-soft); }
+  .hdr-cu-btn:active { background: var(--press); }
+  .hdr-cu-btn[aria-expanded="true"] { background: var(--blue-soft); color: var(--blue); }
+  .hdr-cu-btn[aria-expanded="true"] .cu-chevron { transform: rotate(180deg); color: var(--blue); }
+  .hdr-cu-btn .cu-acct-desk { color: var(--fg-secondary); font-weight: 500; }
+  .hdr-cu-btn .cu-acct-mob { display: none; color: var(--fg-secondary); font-weight: 500; }
+  .hdr-cu-btn #cuText { font-weight: 600; color: var(--fg); font-variant-numeric: tabular-nums; }
+  .hdr-cu-btn .cu-chevron { width: 12px; height: 12px; color: var(--muted); transition: transform var(--t) var(--ease), color var(--t-fast) var(--ease); flex-shrink: 0; }
+
+  .hdr-power-btns {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .hdr-sep {
+    width: 1px;
+    height: 18px;
+    background: var(--line-strong);
+    margin: 0 2px;
+    flex-shrink: 0;
+  }
+  .global-task-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    flex-shrink: 0;
+  }
+  .global-task-pill {
+    height: 32px;
+    padding: 0 11px;
+    border: 0;
+    border-radius: var(--r-ctl);
+    background: var(--card-2);
+    color: var(--fg-secondary);
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    white-space: nowrap;
+    max-width: 240px;
+    transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+  }
+  .global-task-pill.is-running {
+    background: var(--blue-soft);
+    color: var(--blue);
+  }
+  .global-task-pill.is-panel-open {
+    background: var(--card-3);
+    color: var(--fg);
+  }
+  .global-task-pill.is-running.is-panel-open {
+    background: var(--blue-soft);
+    color: var(--blue);
+  }
+  .global-task-pill-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .nav-run-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--blue);
+    flex-shrink: 0;
+    animation: navDotPulse 1.6s infinite ease-in-out;
+  }
+  .nav-run-dot[hidden] { display: none !important; }
+  @keyframes navDotPulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.36; transform: scale(0.82); }
+  }
+  #globalStopMiniBtn {
+    height: 32px;
+    padding: 0 10px;
+    border-radius: var(--r-ctl);
+  }
+  .mob-fold-top-btn {
+    display: none;
+    width: 30px;
+    height: 30px;
+    flex: 0 0 30px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--r-ctl);
+    background: var(--card-2);
+    color: var(--fg-secondary);
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background-color var(--t-fast) var(--ease);
+  }
+  .mob-fold-top-btn .ico {
+    width: 14px;
+    height: 14px;
+    transform: rotate(180deg);
+    transition: transform 180ms var(--ease);
+  }
+  .top-status-card.mob-collapsed .mob-fold-top-btn .ico {
+    transform: rotate(0deg);
   }
 
-  @media (min-width: 681px) {
-    #g4Badge { min-width: 140px; justify-content: center; }
-    #cuBadge { min-width: 94px; justify-content: center; }
-    .topbar-controls > button.btn-sm {
-      width: 80px;
-      flex: 0 0 80px;
-      padding: 0;
-      justify-content: center;
-    }
-    .topbar-controls > button.btn-icon-sq { width: 32px; flex: 0 0 32px; padding: 0; justify-content: center; }
-    .topbar-controls > a.btn-sm {
-      width: 92px;
-      flex: 0 0 92px;
-      padding: 0;
-      justify-content: center;
-    }
-  }
-  @media (min-width: 1220px) {
-    .topbar-row1, .topbar-right, .topbar-metrics { flex-wrap: nowrap; }
-  }
-
-  /* Permanent 4-Column Studio Hardware Telemetry Bar */
+  /* 4-Column Zeno Hardware Telemetry Bar inside Top Status Card */
   .topbar-hw {
     width: 100%;
     padding-top: 10px;
@@ -835,87 +1120,318 @@
   .hw-bar-fill.warn { background: var(--amber-bar); }
   .hw-bar-fill.danger { background: var(--red-bar); }
 
-  /* ==================== 5. Dual-Mode View Navigation (Desktop Topbar Segmented | Mobile Auto-Hide Bottom Glass Pill) ==================== */
-  .topbar-left {
-    display: inline-flex;
-    align-items: center;
-    gap: 12px;
-    min-width: 0;
-  }
-  .top-view-seg {
-    position: relative;
+  /* ---- Main Stage & Docked/Drawer Live Task Panel (Desktop Matches Sidebar Full Height Across All 5 Views) ---- */
+  .app-stage {
+    flex: 1 1 auto;
+    width: 100%;
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    min-width: 204px;
-    height: 32px;
-    padding: 3px;
-    border-radius: var(--r-ctl);
-    gap: 0;
-    flex-shrink: 0;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--shell-gap);
+    align-items: stretch;
+    min-width: 0;
+    min-height: 0;
   }
-  .top-seg-glider {
-    position: absolute;
-    top: 3px;
-    bottom: 3px;
-    left: 3px;
-    width: calc(50% - 3px);
-    border-radius: 6px;
-    background: var(--seg-thumb);
-    box-shadow: var(--seg-thumb-shadow);
-    pointer-events: none;
-    z-index: 0;
+  .app-stage[data-task-mode="docked"] {
+    grid-template-columns: minmax(0, 1fr) var(--task-col-w);
+    align-items: stretch;
   }
-  .top-seg-glider {
-    transform: translate3d(0, 0, 0);
+  @media (min-width: 1025px) {
+    .app-pages {
+      display: flex;
+      flex-direction: column;
+      min-height: 100%;
+    }
+    .page-view.active {
+      flex: 1 1 auto;
+      min-height: 100%;
+    }
+    #pageCreation.active .card-main,
+    #pageCreation.active .creation-body {
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    #pageCreation .creation-body:not([data-mod="llm"]) .mod-input.active {
+      flex: 1 1 auto;
+      height: auto;
+      min-height: 132px;
+      resize: none;
+    }
+    #pageCreation .creation-body[data-mod="llm"] .param-panel {
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    #pageCreation .creation-body[data-mod="llm"] #modSecLlm.active {
+      flex: 1 1 auto;
+      min-height: 0;
+    }
+    #pageCreation .creation-body[data-mod="llm"] .chat-box {
+      flex: 1 1 0;
+      min-height: 260px;
+      max-height: calc(100dvh - 380px);
+    }
+    #pageWorks.active .card-works {
+      flex: 1 1 auto;
+      min-height: 100%;
+    }
+    #pageWorks.active .works-gallery-card {
+      flex: 1 1 auto;
+    }
+    body[data-page="settings"] .app-content {
+      height: 100dvh;
+      overflow: hidden;
+    }
+    body[data-page="settings"] .app-pages,
+    body[data-page="settings"] #pageSettings.active {
+      height: 100%;
+      min-height: 0;
+    }
+    #pageSettings.active .settings-page-card {
+      flex: 1 1 auto;
+      height: 100%;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    #pageSettings.active .settings-page-card .settings-body {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-y: auto;
+    }
+    #pageSettings.active .settings-page-card .settings-foot {
+      position: static;
+      box-shadow: none;
+    }
+    .app-stage[data-task-mode="docked"] .task-panel-wrap {
+      min-height: 100%;
+    }
+    .app-stage[data-task-mode="docked"] .task-panel-wrap .card-progress {
+      height: 100%;
+      min-height: 100%;
+      max-height: calc(100dvh - 28px);
+    }
+    .app-stage[data-task-mode="docked"] .task-panel-wrap .task-ledger {
+      height: auto;
+      min-height: 180px;
+      max-height: none;
+      flex: 1 1 52%;
+    }
+    .app-stage[data-task-mode="docked"] .task-panel-wrap .log-console {
+      height: auto;
+      min-height: 180px;
+      flex: 1 1 48%;
+    }
   }
-  .top-view-seg .seg-btn {
-    position: relative;
-    z-index: 1;
-    height: 26px;
-    padding: 0 12px;
-    border-radius: 6px;
-    font-size: 12.5px;
-    gap: 6px;
-    background: transparent !important;
-    box-shadow: none !important;
+  .app-stage[data-task-mode="docked"].task-collapsed {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .app-stage[data-task-mode="docked"].task-collapsed .task-panel-wrap {
+    display: none;
   }
 
-  .nav-run-dot {
-    width: 6.5px;
-    height: 6.5px;
-    border-radius: 50%;
-    background: var(--blue);
-    flex-shrink: 0;
-    animation: navDotPulse 1.6s infinite ease-in-out;
+  .app-pages {
+    min-width: 0;
+    width: 100%;
   }
-  .nav-run-dot[hidden] { display: none !important; }
-  @keyframes navDotPulse {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.38; transform: scale(0.84); }
+  .page-view {
+    display: none;
+    flex-direction: column;
+    gap: var(--shell-gap);
+    min-width: 0;
+    width: 100%;
+  }
+  .page-view.active {
+    display: flex;
   }
 
-  /* Desktop Right-Edge Back-to-Top Button */
-  .float-dock {
+  /* Live Task Panel */
+  .task-panel-wrap {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .app-stage[data-task-mode="docked"] .task-panel-wrap {
+    position: sticky;
+    top: var(--shell-gap);
+    max-height: calc(100dvh - 28px);
+  }
+  .app-stage[data-task-mode="docked"] .task-panel-wrap .card-progress {
+    height: 100%;
+    max-height: calc(100dvh - 28px);
+    overflow: hidden;
+  }
+  .app-stage[data-task-mode="docked"] .task-panel-wrap .task-ledger {
+    height: 176px;
+    min-height: 156px;
+    max-height: 260px;
+    flex: 1 1 auto;
+  }
+  .app-stage[data-task-mode="docked"] .task-panel-wrap .log-console {
+    height: 176px;
+    min-height: 168px;
+    flex: 1 1 176px;
+  }
+
+  .app-stage[data-task-mode="drawer"] .task-panel-wrap {
     position: fixed;
-    left: calc(50% + 680px);
-    bottom: 24px;
-    z-index: 55;
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: min(410px, calc(100vw - 28px));
+    z-index: 90;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translate3d(24px, 0, 0);
+    transition: transform 200ms var(--ease), opacity 180ms var(--ease), visibility 0s linear 200ms;
+  }
+  .app-stage[data-task-mode="drawer"].drawer-open .task-panel-wrap {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: translate3d(0, 0, 0);
+    transition: transform 200ms var(--ease), opacity 180ms var(--ease), visibility 0s linear 0s;
+  }
+  .app-stage[data-task-mode="drawer"] .task-panel-wrap .card-progress {
+    height: 100%;
+    box-shadow: var(--shadow-modal);
+    border-color: var(--line-strong);
+  }
+  .app-stage[data-task-mode="drawer"] .task-panel-wrap .task-ledger {
+    flex: 1 1 50%;
+    height: auto;
+    min-height: 160px;
+  }
+  .app-stage[data-task-mode="drawer"] .task-panel-wrap .log-console {
+    flex: 0 0 210px;
+    height: 210px;
+  }
+  .task-drawer-close {
+    display: none;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    flex: 0 0 28px;
+  }
+  .app-stage[data-task-mode="drawer"] .task-drawer-close {
+    display: inline-flex;
+  }
+  .task-sheet-handle {
+    display: none;
+    width: 36px;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--line-strong);
+    margin: -4px auto 2px;
+  }
+  .task-drawer-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 85;
+    background: var(--backdrop-bg);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 180ms var(--ease), visibility 0s linear 180ms;
+  }
+  .task-drawer-backdrop.open {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition: opacity 180ms var(--ease), visibility 0s linear 0s;
+  }
+
+  /* ---- Enhanced Creation Editor Proportions ---- */
+  #pageCreation .creation-body:not([data-mod="llm"]) .mod-input.active {
+    height: 124px;
+    min-height: 98px;
+    resize: vertical;
+  }
+  #pageCreation .creation-body[data-mod="llm"] .chat-box {
+    min-height: 260px;
+    max-height: calc(100dvh - 400px);
+  }
+  #pageCreation .creation-body[data-mod="llm"] #promptInputLlm.active {
+    height: 94px;
+    resize: vertical;
+  }
+
+  /* ---- Full-Page Inline Settings Card ---- */
+  .settings-page-card {
+    max-width: none;
+    width: 100%;
+    padding: 0;
+    gap: 0;
+    overflow: visible;
+  }
+  .settings-page-card .settings-head {
+    border-radius: var(--r-card) var(--r-card) 0 0;
+    background: var(--surface);
+    padding: 14px 20px;
+    gap: 10px;
+  }
+  .settings-page-card .settings-body {
+    overflow: visible;
+    padding: 18px 20px;
+  }
+  .settings-page-card .settings-foot {
+    position: sticky;
+    bottom: 0;
+    z-index: 12;
+    background: var(--surface);
+    border-top: 1px solid var(--line);
+    border-radius: 0 0 var(--r-card) var(--r-card);
+    padding: 12px 20px;
+    box-shadow: 0 -6px 18px -10px rgba(15, 23, 42, 0.14);
+  }
+  html[data-theme="dark"] .settings-page-card .settings-foot {
+    box-shadow: 0 -8px 22px -10px rgba(0, 0, 0, 0.45);
+  }
+  .mob-only-btn { display: none; }
+
+  /* ---- Fixed Floating Popovers (Account Switcher & Warmup Picker) ---- */
+  .account-picker-fixed {
+    position: fixed !important;
+    top: auto;
+    right: auto;
+    left: auto;
+    z-index: 126;
+    width: min(396px, calc(100vw - 20px));
+    transform-origin: top right;
+  }
+  .account-picker-fixed .acct-head { align-items: flex-start; }
+  .account-picker-fixed .acct-head-left {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    pointer-events: none;
+    gap: 2px;
+    min-width: 0;
   }
-  @media (max-width: 1660px) {
-    .float-dock {
-      left: auto;
-      right: max(14px, calc(50% - 666px + 12px));
-      align-items: flex-end;
-    }
+  .warmup-picker-fixed {
+    position: fixed !important;
+    top: auto;
+    right: auto;
+    z-index: 125;
+    width: min(384px, calc(100vw - 20px));
+    transform-origin: top right;
+  }
+
+  /* ---- Floating Back-to-Top Button ---- */
+  .float-dock {
+    position: fixed;
+    right: 22px;
+    bottom: 22px;
+    z-index: 55;
+    pointer-events: none;
   }
   .back-top-btn {
     pointer-events: auto;
-    width: 40px;
-    height: 40px;
+    width: 38px;
+    height: 38px;
     padding: 0;
     border-radius: 50%;
     background: var(--surface-elevated);
@@ -932,180 +1448,167 @@
   .back-top-btn[hidden] { display: none; }
   .back-top-btn:active { transform: scale(0.94); }
 
-  /* Permanent Dual-Layer GPU Viewport Stage (Zero Layout, Zero Paint, Zero Texture Re-upload) */
-  .workspace.is-swiping,
-  .workspace.is-swiping * {
-    user-select: none !important;
-    -webkit-user-select: none !important;
-  }
-  .workspace.is-swiping {
-    cursor: grabbing;
-  }
-  .workspace.is-swiping .media-item,
-  .workspace.is-animating .media-item {
-    pointer-events: none !important;
-    transition: none !important;
-  }
-  .mob-top-right-nav {
+  /* ---- Mobile Zero-Mask Card Dock Inside Locked App-Shell (position:absolute + transparent wrapper -> ZERO Safari bottom mask, ZERO gray slab, ZERO auto-lift) ---- */
+  .mob-bottom-nav {
     display: none;
-    align-items: center;
-    gap: 6px;
-    margin-left: auto;
-    flex-shrink: 0;
-  }
-  .mob-fold-top-btn {
-    width: 28px;
-    height: 28px;
-    flex: 0 0 28px;
-    padding: 0;
-    border: 0;
-    border-radius: 999px;
-    background: var(--card-2);
-    color: var(--fg-secondary);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    background: transparent;
+    padding: 0 10px 4px;
+    pointer-events: none;
     user-select: none;
-    transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+    transform: translate3d(0, 0, 0);
+    opacity: 1;
+    transition: transform 200ms cubic-bezier(0.22, 0.8, 0.28, 1), opacity 160ms ease;
   }
-  .mob-fold-top-btn:active { background: var(--press); }
-  .mob-fold-top-btn .ico {
-    width: 14px;
-    height: 14px;
-    transform: rotate(180deg);
-    transition: transform 180ms var(--ease);
+  html.pwa-standalone .mob-bottom-nav {
+    padding-bottom: max(24px, env(safe-area-inset-bottom, 24px));
   }
-  .topbar-inner.mob-collapsed .mob-fold-top-btn .ico {
-    transform: rotate(0deg);
+  html.pwa-standalone .app-content {
+    padding-bottom: calc(74px + max(24px, env(safe-area-inset-bottom, 24px)));
   }
-  .mob-page-dots {
+  html.pwa-standalone .float-dock,
+  html.pwa-standalone .toast {
+    bottom: calc(64px + max(24px, env(safe-area-inset-bottom, 24px)));
+  }
+  html.pwa-standalone .app-stage[data-task-mode="drawer"] .task-panel-wrap {
+    bottom: calc(62px + max(24px, env(safe-area-inset-bottom, 24px)));
+  }
+  @media (display-mode: standalone) {
+    .mob-bottom-nav {
+      padding-bottom: max(24px, env(safe-area-inset-bottom, 24px));
+    }
+    .app-content {
+      padding-bottom: calc(74px + max(24px, env(safe-area-inset-bottom, 24px)));
+    }
+    .float-dock,
+    .toast {
+      bottom: calc(64px + max(24px, env(safe-area-inset-bottom, 24px)));
+    }
+    .app-stage[data-task-mode="drawer"] .task-panel-wrap {
+      bottom: calc(62px + max(24px, env(safe-area-inset-bottom, 24px)));
+    }
+  }
+  .mob-bottom-nav.nav-hidden,
+  .mob-bottom-nav.kb-hidden {
+    transform: translate3d(0, calc(100% + 24px), 0);
+    opacity: 0;
+  }
+  .mob-bottom-nav.nav-hidden .mob-nav-card,
+  .mob-bottom-nav.kb-hidden .mob-nav-card {
+    pointer-events: none;
+  }
+  .mob-nav-card {
+    pointer-events: auto;
+    width: 100%;
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 3px;
+    background: var(--surface);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-card);
+    box-shadow: 0 8px 24px -6px rgba(15, 23, 42, 0.16), 0 2px 6px rgba(15, 23, 42, 0.06);
+  }
+  html[data-theme="dark"] .mob-nav-card {
+    box-shadow: 0 10px 28px -4px rgba(0, 0, 0, 0.54), 0 2px 6px rgba(0, 0, 0, 0.32);
+  }
+  .mob-nav-track {
     position: relative;
-    display: inline-grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    align-items: center;
-    height: 28px;
-    min-width: 112px;
-    padding: 2.5px;
-    border: 0;
-    border-radius: 999px;
-    background: var(--card-2);
-    cursor: pointer;
-    user-select: none;
-    flex-shrink: 0;
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0;
   }
   .mob-nav-glider {
     position: absolute;
-    top: 2.5px;
-    bottom: 2.5px;
-    left: 2.5px;
-    width: calc(50% - 2.5px);
-    border-radius: 999px;
-    background: var(--seg-thumb);
-    box-shadow: var(--seg-thumb-shadow);
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 20%;
+    border-radius: 11px;
+    background: var(--blue-soft);
+    box-shadow: inset 0 0 0 1px rgba(0, 113, 227, 0.14);
     pointer-events: none;
     z-index: 0;
+    transform: translate3d(0%, 0, 0);
+    transition: transform 230ms cubic-bezier(0.28, 0.82, 0.24, 1);
+    will-change: transform;
   }
-  .mob-nav-glider {
-    transform: translate3d(0, 0, 0);
+  html[data-theme="dark"] .mob-nav-glider {
+    box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.24);
   }
-  .mob-page-dot {
+  .mob-nav-item {
     position: relative;
     z-index: 1;
-    height: 23px;
-    padding: 0 9px;
-    font-size: 11.5px;
-    font-weight: 500;
+    border: 0;
+    background: transparent;
     color: var(--muted);
+    font-family: inherit;
+    height: 44px;
+    padding: 3px 2px;
+    border-radius: 11px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2.5px;
+    min-width: 0;
+    cursor: pointer;
+    transition: color 150ms var(--ease), transform 100ms var(--ease);
+  }
+  .mob-nav-item:active {
+    transform: scale(0.94);
+  }
+  .mob-nav-icon-wrap {
+    position: relative;
+    width: 20px;
+    height: 20px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 4px;
-    white-space: nowrap;
-    transition: color 150ms var(--ease);
   }
-  .mob-page-dot.active {
-    color: var(--fg);
+  .mob-nav-icon-wrap .ico {
+    width: 18px;
+    height: 18px;
+    stroke-width: 1.75;
+    transition: stroke-width 150ms var(--ease);
+  }
+  .mob-nav-item.active {
+    color: var(--blue);
+  }
+  .mob-nav-item.active .ico {
+    stroke-width: 2;
+  }
+  .mob-nav-lbl {
+    font-size: 10.5px;
+    font-weight: 500;
+    line-height: 1.1;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+  }
+  .mob-nav-item.active .mob-nav-lbl {
     font-weight: 600;
   }
 
-  /* ==================== 6. Main Workbench & Cards ==================== */
-  .workspace {
-    width: 100%;
-    max-width: 1400px;
-    margin: 12px auto 0;
-    padding: 0 24px;
-    position: relative;
-    overflow-x: clip;
-    z-index: 1;
-  }
-  #colMain,
-  #worksStandalonePane,
-  #worksBody {
-    width: 100%;
-    margin: 0;
-  }
-  #colMain,
-  #worksStandalonePane {
-    transform: translate3d(0, 0, 0);
-    backface-visibility: hidden;
-    -webkit-backface-visibility: hidden;
-  }
-  .workspace.is-swiping #colMain,
-  .workspace.is-swiping #worksStandalonePane,
-  .workspace.is-animating #colMain,
-  .workspace.is-animating #worksStandalonePane {
-    will-change: transform;
-  }
-  #colMain.pane-offscreen,
-  #worksStandalonePane.pane-offscreen {
-    position: absolute !important;
-    top: 0 !important;
-    left: 24px;
-    right: 24px;
-    width: auto !important;
-    height: 100vh !important;
-    overflow: hidden !important;
-    visibility: hidden !important;
-    pointer-events: none !important;
-    transform: translate3d(105%, 0, 0) !important;
-  }
-  .pane-sliding {
-    position: absolute !important;
-    left: 24px;
-    right: 24px;
-    width: auto !important;
-    visibility: visible !important;
-    pointer-events: none !important;
-  }
-  .workspace.is-swiping *,
-  .workspace.is-animating .no-child-trans * {
-    transition: none !important;
-  }
-  .col-main {
+  .side-comfy-link {
+    margin: 0 10px 8px;
+    height: 32px;
+    border-radius: var(--r-ctl);
+    background: var(--card-2);
+    color: var(--fg-secondary);
+    font-size: 12px;
+    font-weight: 500;
+    text-decoration: none;
     display: flex;
-    flex-direction: column;
-    gap: 14px;
-    min-width: 0;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
   }
-  .creation-stage {
-    display: grid;
-    grid-template-columns: 446px minmax(0, 1fr);
-    gap: 14px;
-    align-items: start;
-    min-width: 0;
-  }
-  .creation-left {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-    min-width: 0;
-  }
-  .creation-right {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-  }
+  .side-comfy-link[hidden] { display: none !important; }
   .card {
     background: var(--surface);
     border: 1px solid var(--line);
@@ -1180,7 +1683,7 @@
   .param-grid { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
   .param-row {
     display: grid;
-    grid-template-columns: 44px minmax(0, 1fr);
+    grid-template-columns: 64px minmax(0, 1fr);
     align-items: center;
     gap: 10px;
     min-height: 34px;
@@ -2881,127 +3384,156 @@
     }
   }
 
-  /* ==================== 11. Desktop Left-Creation / Right-Works Split & Responsive Breakpoints ==================== */
-  @media (min-width: 1025px) {
-    .creation-left .param-row {
-      grid-template-columns: 40px minmax(0, 1fr);
-      gap: 8px;
-    }
-    .creation-left .param-row .seg-btn {
-      padding: 0 4px;
-      font-size: 12px;
-    }
-    .creation-left .param-row .option-hint {
-      font-size: 10.5px;
-    }
-    .creation-left .creation-body:not([data-mod="llm"]) .mod-input.active {
-      height: 108px;
-      min-height: 92px;
-      resize: vertical;
-    }
-    .creation-left .creation-body[data-mod="llm"] .chat-box {
-      max-height: 240px;
-      min-height: 150px;
-    }
-    .creation-left .creation-body[data-mod="llm"] #promptInputLlm.active {
-      height: 92px;
-      resize: vertical;
-    }
-    .creation-left .card-progress {
-      min-height: 0;
-    }
-    .creation-left .card-progress .task-ledger {
-      height: 204px;
-    }
-    .creation-left .card-progress .log-console {
-      height: 168px;
-    }
-    .creation-right .works-toolbar {
-      flex-wrap: nowrap;
-      gap: 8px;
-    }
-    .creation-right .works-head-left {
-      flex: 0 1 auto;
-      flex-wrap: nowrap;
-    }
-    .creation-right .tabs-bar {
-      flex-shrink: 0;
-    }
-    .creation-right .tabs-bar .tab-pill {
-      padding: 0 8.5px;
-      font-size: 12px;
-    }
-    .creation-right .works-filter-group {
-      flex: 1 1 auto;
-      flex-wrap: nowrap;
-      justify-content: flex-end;
-      gap: 6px;
-    }
-    .creation-right .search-wrap {
-      flex: 1 1 136px;
-      width: auto;
-      max-width: 196px;
-      min-width: 96px;
-    }
-    .creation-right .works-actions-inline {
-      flex-shrink: 0;
-      flex-wrap: nowrap;
-    }
-    .creation-right .works-actions-inline .btn-sm {
-      padding: 0 9px;
-      font-size: 12px;
-    }
-    .creation-right #toggleBatchBtn {
-      min-width: 78px;
-    }
-    .creation-right .gallery-grid {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 12px;
-    }
-    .creation-right .gallery-grid.single-col {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-    .creation-right .media-footer {
-      padding: 9px 10px;
-    }
-    .creation-right .media-top-row {
-      gap: 6px;
-    }
-    .creation-right .media-info span {
-      font-size: 10.5px;
-    }
-    .creation-right .media-icon-actions {
-      gap: 4px;
-    }
-    .creation-right .media-icon-actions .btn-xs {
-      padding: 0 7px;
-      height: 26px;
-      font-size: 11.5px;
-    }
-  }
-  @media (min-width: 1025px) and (max-width: 1340px) {
-    .creation-stage {
-      grid-template-columns: minmax(396px, 432px) minmax(0, 1fr);
-    }
-    .creation-right .works-toolbar {
-      flex-wrap: wrap;
-    }
-    .creation-right .works-filter-group {
-      width: 100%;
-      justify-content: space-between;
-    }
-    .creation-right .search-wrap {
-      max-width: none;
-    }
-    .creation-right .gallery-grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
+  /* ==================== 11. Hover & Responsive Breakpoints (Desktop / Tablet / Mobile 5-Tab Bottom Nav) ==================== */
+  @media (hover: hover) and (pointer: fine) {
+    .side-nav-btn:not(.active):hover { background: var(--hover); color: var(--fg); }
+    .side-nav-btn:not(.active):hover .ico { color: var(--fg-secondary); }
+    .side-icon-btn:hover { background: var(--hover); color: var(--fg); }
+    .hdr-cu-btn:hover { background: var(--hover); }
+    .hdr-cu-btn[aria-expanded="true"]:hover { background: var(--blue-soft); }
+    .status-pill[role="button"]:hover { background: var(--hover); }
+    .status-pill.on[role="button"]:hover { background: var(--green-soft); filter: brightness(0.97); }
+    .status-pill.off[role="button"]:hover { background: var(--red-soft); filter: brightness(0.97); }
+    .side-logout-btn:hover { background: var(--red-soft); color: var(--red); }
+    .global-task-pill:hover { background: var(--hover); color: var(--fg); }
+    .global-task-pill.is-running:hover { background: var(--blue-soft); filter: brightness(0.97); }
   }
 
-  @media (max-width: 1024px) {
-    .creation-stage {
-      grid-template-columns: minmax(0, 1fr);
+  @media (max-width: 1500px) {
+    .page-header-sub { display: none; }
+  }
+
+  @media (min-width: 1025px) and (max-width: 1320px) {
+    :root {
+      --sidebar-w: 198px;
+      --task-col-w: 332px;
+      --shell-gap: 12px;
     }
+    .top-status-card { padding: 11px 14px; }
+  }
+
+  /* Tablet & Mobile (<= 1024px): Locked 100% App-Shell + Internal Scroll (Zero Safari Fixed Bottom Mask / Auto-Lift) */
+  @media (max-width: 1024px) {
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      overscroll-behavior: none;
+    }
+    .app-shell {
+      position: relative;
+      flex-direction: column;
+      height: 100%;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .app-sidebar { display: none !important; }
+    .app-content {
+      flex: 1 1 auto;
+      min-height: 0;
+      height: 100%;
+      margin-left: 0;
+      overflow-y: auto;
+      overflow-x: hidden;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior-y: contain;
+      padding: 10px 10px 66px;
+      gap: 10px;
+    }
+    .mob-header-brand { display: inline-flex; }
+    .mob-fold-top-btn { display: inline-flex; }
+    .mob-only-btn { display: inline-flex; }
+    .page-header-sub { display: none; }
+    .hdr-sep { display: none; }
+    .mob-bottom-nav { display: block; }
+
+    .top-status-card { padding: 11px 12px; gap: 10px; }
+    .top-card-row1 { gap: 8px; }
+    .top-card-left { flex: 1 1 auto; }
+    .top-card-right {
+      margin-left: 0;
+      display: contents;
+    }
+    .global-task-group { order: 2; }
+    .mob-fold-top-btn { order: 3; }
+    .top-compute-group {
+      order: 4;
+      flex: 0 0 100%;
+      width: 100%;
+      padding-top: 9px;
+      border-top: 1px solid var(--line);
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px;
+    }
+    .top-compute-group .status-pill,
+    .top-compute-group .hdr-cu-btn {
+      width: 100%;
+      justify-content: center;
+      height: 31px;
+      padding: 0 8px;
+      font-size: 11.5px;
+    }
+    .hdr-power-btns {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+      width: 100%;
+    }
+    .hdr-power-btns .btn {
+      width: 100%;
+      height: 31px;
+      padding: 0 6px;
+      font-size: 12px;
+    }
+    .hdr-cu-btn .cu-acct-desk { display: none !important; }
+    .hdr-cu-btn .cu-acct-mob { display: inline; }
+
+    .top-status-card.mob-collapsed { gap: 0; }
+    .top-status-card.mob-collapsed .top-compute-group,
+    .top-status-card.mob-collapsed .topbar-hw {
+      display: none !important;
+    }
+
+    .app-stage,
+    .app-stage[data-task-mode="docked"] {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 10px;
+    }
+    .app-stage[data-task-mode="docked"].task-collapsed .task-panel-wrap { display: flex; }
+    .app-stage[data-task-mode="docked"] .task-panel-wrap { position: static; max-height: none; }
+    .app-stage[data-task-mode="docked"] .task-panel-wrap .card-progress { max-height: none; }
+    .app-stage[data-task-mode="docked"] .task-panel-wrap .task-ledger { max-height: 220px; }
+    .app-stage[data-task-mode="docked"] .task-panel-wrap .log-console { height: 164px; }
+
+    .app-stage[data-task-mode="drawer"] .task-panel-wrap {
+      top: auto;
+      left: 8px;
+      right: 8px;
+      bottom: 64px;
+      width: auto;
+      max-height: min(76dvh, 620px);
+      transform: translate3d(0, 28px, 0);
+    }
+    .app-stage[data-task-mode="drawer"].drawer-open .task-panel-wrap { transform: translate3d(0, 0, 0); }
+    .app-stage[data-task-mode="drawer"] .task-sheet-handle { display: block; }
+    .app-stage[data-task-mode="drawer"] .task-panel-wrap .card-progress { max-height: min(76dvh, 620px); height: auto; }
+    .app-stage[data-task-mode="drawer"] .task-panel-wrap .task-ledger { max-height: 200px; }
+    .app-stage[data-task-mode="drawer"] .task-panel-wrap .log-console { flex: 0 0 148px; height: 148px; }
+
+    .float-dock {
+      right: 14px;
+      bottom: 66px;
+    }
+    .toast {
+      bottom: 66px;
+    }
+    .settings-page-card .settings-foot { position: static; box-shadow: none; }
+  }
+
+  @media (max-width: 960px) and (min-width: 681px) {
+    .works-toolbar { grid-template-columns: minmax(0, 1fr); gap: 9px; }
+    .works-head-left { width: 100%; }
   }
 
   @media (max-width: 820px) {
@@ -3016,38 +3548,13 @@
   }
 
   @media (max-width: 680px) {
-    body { padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px)); }
-    .topbar { padding: 0; }
-    .topbar-inner { padding: 11px 12px; gap: 10px; }
-    .brand { flex: 1 1 auto; }
-    .topbar-sep { display: none; }
-    .topbar-right {
-      width: 100%;
-      flex-direction: column;
-      align-items: stretch;
-      gap: 8px;
-      padding-top: 8px;
-      border-top: 1px solid var(--line);
-    }
-    .topbar-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; width: 100%; }
-    .cu-badge-anchor { width: 100%; }
-    .status-pill { justify-content: center; padding: 0 8px; font-size: 11.5px; min-width: 0; }
-    .topbar-controls { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; width: 100%; align-items: center; }
-    .topbar-controls .btn { width: 100%; padding: 0 4px; font-size: 11.5px; height: 32px; }
-
-    .workspace { margin-top: 8px; padding: 0 10px; }
-    .col-main,
-    .creation-stage,
-    .creation-left { gap: 10px; }
-    #colMain.pane-offscreen,
-    #worksStandalonePane.pane-offscreen,
-    .pane-sliding {
-      left: 10px;
-      right: 10px;
-    }
+    .page-header-title { font-size: 14.5px; }
+    .global-task-pill { height: 30px; padding: 0 9px; font-size: 11.5px; max-width: 146px; }
+    #globalStopMiniBtn { height: 30px; padding: 0 8px; font-size: 11.5px; }
     .card { padding: 13px 12px; gap: 10px; }
     .desk-only { display: none; }
-    .param-row { grid-template-columns: 38px minmax(0, 1fr); height: auto; min-height: 38px; gap: 6px; }
+
+    .param-row { grid-template-columns: 54px minmax(0, 1fr); height: auto; min-height: 38px; gap: 7px; }
     .param-row .seg-group { height: auto; padding: 3px; }
     .param-row .seg-btn { height: auto; min-height: 36px; padding: 4px 2px; font-size: 11.5px; flex-direction: column; gap: 2px; }
     .option-value, .option-hint { display: block; margin-left: 0; }
@@ -3057,10 +3564,14 @@
 
     .action-spacer { display: none; }
     .action-bar { display: grid; grid-template-columns: 1fr 1fr 1.35fr; gap: 8px; }
-    .creation-body[data-mod="image"] .action-bar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .action-bar > .btn, #randomRunBtn, #runBtn { width: 100%; min-width: 0; height: 38px; }
+    .creation-body[data-mod="image"] .action-bar,
+    .creation-body[data-mod="video"] .action-bar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .creation-body[data-mod="video"] .action-bar #runBtn { grid-column: 1 / -1; }
+    .action-bar > .btn, #randomRunBtn, #randomVideoBtn, #videoPromptBtn, #runBtn { width: 100%; min-width: 0; height: 38px; }
 
-    .mod-input { height: 78px; padding: 8px 10px; }
+    #pageCreation .creation-body:not([data-mod="llm"]) .mod-input.active { height: 92px; padding: 8px 10px; }
+    #pageCreation .creation-body[data-mod="llm"] .chat-box { min-height: 200px; max-height: 44dvh; }
+    #pageCreation .creation-body[data-mod="llm"] #promptInputLlm.active { height: 76px; padding: 8px 10px; }
     .ref-strip-list { min-height: 70px; }
     .ref-thumb-card { flex: 0 0 54px; width: 54px; height: 68px; }
 
@@ -3081,55 +3592,21 @@
       box-shadow: var(--shadow-card);
       gap: 10px;
     }
-    .creation-right .works-top-card {
-      display: none !important;
-    }
-    .works-toolbar {
-      flex-direction: column;
-      align-items: stretch;
-      gap: 10px;
-      padding-bottom: 0;
-      border-bottom: 0;
-    }
-    .works-head-left { flex-direction: column; align-items: stretch; gap: 10px; width: 100%; }
-    .works-view-nav { width: 100%; }
-    .works-mob-nav-bar {
-      display: flex;
-      padding-bottom: 8px;
-      border-bottom: 1px solid var(--line);
-    }
-    #worksStandalonePane .works-body.mob-works-collapsed .works-top-card,
-    #worksStandalonePane .works-body.mob-works-collapsed .works-toolbar {
-      gap: 0;
-    }
-    #worksStandalonePane .works-body.mob-works-collapsed .works-head-left { gap: 0; }
-    #worksStandalonePane .works-body.mob-works-collapsed .works-mob-nav-bar {
-      padding-bottom: 0;
-      border-bottom: 0;
-    }
-    #worksStandalonePane .works-body.mob-works-collapsed .tabs-bar,
-    #worksStandalonePane .works-body.mob-works-collapsed .works-filter-group,
-    #worksStandalonePane .works-body.mob-works-collapsed .batch-toolbar {
-      display: none !important;
-    }
+    .works-toolbar { display: flex; flex-direction: column; align-items: stretch; gap: 9px; padding-bottom: 0; border-bottom: 0; }
+    .works-head-left { flex-direction: column; align-items: stretch; gap: 8px; width: 100%; }
     .tabs-bar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); height: auto; gap: 4px; width: 100%; }
     .tabs-bar .tab-pill { height: 32px; }
-    .works-filter-group { display: flex; flex-direction: column; align-items: stretch; gap: 6px; width: 100%; }
+    .works-filter-group { display: flex; flex-direction: column; align-items: stretch; gap: 7px; width: 100%; }
     .search-wrap { width: 100%; height: 34px; }
+    .works-filter-group > .search-wrap { width: 100%; min-width: 0; padding: 0 10px; gap: 7px; }
     .works-actions-inline { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; width: 100%; }
-    .works-actions-inline > .drive-sync-anchor { width: 100%; }
+    .works-actions-inline > .drive-sync-anchor { width: 100%; min-width: 0; }
     .works-actions-inline > .drive-sync-anchor > .btn { width: 100%; }
-    .pagination-bar.pagination-top .pagination-meta-left {
-      width: 100%;
-      justify-content: space-between;
-      gap: 6px;
-    }
-    .pagination-meta-right-mob {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-    }
-    .works-actions-inline .btn { width: 100%; min-width: 0; padding: 0 4px; }
+    .pagination-top > .pagination-info { flex: 0 0 100%; }
+    .pagination-top .pagination-controls-row { flex-basis: 100%; gap: 6px; }
+    .works-actions-inline .btn { width: 100%; min-width: 0; padding: 0 6px; gap: 5px; justify-content: center; }
+    .works-actions-inline #toggleBatchBtn { min-width: 0; }
+    .works-actions-inline .drive-sync-trigger .control-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
     .batch-toolbar { flex-direction: column; align-items: stretch; gap: 6px; padding: 7px; }
     .batch-sep { display: none; }
     .batch-left { flex-direction: column; align-items: stretch; gap: 6px; width: 100%; }
@@ -3138,27 +3615,9 @@
     .batch-right { display: grid; grid-template-columns: 1fr 1fr auto; gap: 5px; width: 100%; }
     .batch-right .btn { width: 100%; }
 
-    .topbar-left { width: 100%; justify-content: space-between; }
-    .desk-nav-only { display: none !important; }
-    .float-dock { display: none !important; }
-    .mob-top-right-nav { display: inline-flex; }
-    .topbar-inner.mob-collapsed {
-      padding: 11px 12px;
-      gap: 0;
-    }
-    .topbar-inner.mob-collapsed .topbar-right,
-    .topbar-inner.mob-collapsed .topbar-hw {
-      display: none !important;
-    }
-    .toast { bottom: calc(24px + env(safe-area-inset-bottom, 0px)); }
-
-    .cu-acct-desk { display: none !important; }
-    .cu-acct-mob { display: inline; }
-    .warmup-picker { left: 0; right: 0; width: 100%; transform-origin: top center; }
-    .account-picker { right: 0; left: auto; width: min(392px, calc(100vw - 20px)); transform-origin: top right; }
-    .settings-dialog { width: calc(100vw - 14px); max-width: calc(100vw - 14px); max-height: 92dvh; }
-    .settings-shell { max-height: 92dvh; }
-    .settings-head, .settings-body, .settings-foot { padding-left: 14px; padding-right: 14px; }
+    .settings-page-card .settings-head,
+    .settings-page-card .settings-body,
+    .settings-page-card .settings-foot { padding-left: 12px; padding-right: 12px; }
     .settings-grid-5 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .settings-grid-6 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .settings-grid-2 { grid-template-columns: minmax(0, 1fr); }
@@ -3166,8 +3625,8 @@
     .res-row-item .row-tag, .res-row-item .res-arrow-sep { grid-column: 1 / -1; text-align: left; }
     .tier-row-item { grid-template-columns: minmax(0, 1fr) 18px minmax(0, 1fr); }
     .tier-row-item .row-tag, .tier-row-item .tier-total-pill { grid-column: 1 / -1; }
-    .settings-foot { flex-direction: column; align-items: stretch; }
-    .settings-foot-left, .settings-foot-right { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+    .settings-foot { flex-direction: column; align-items: stretch; gap: 8px; }
+    .settings-foot-left, .settings-foot-right { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; gap: 6px; }
     .settings-foot .btn { width: 100%; min-width: 0; }
   }
 
@@ -3229,127 +3688,133 @@
   <symbol id="i-list" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></symbol>
   <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></symbol>
   <symbol id="i-send" viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></symbol>
+  <symbol id="i-panel-right" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></symbol>
 </svg>
 
-<main class="workspace" id="workspace">
-  <div class="col-main" id="colMain">
-    <header class="topbar">
-  <div class="topbar-inner">
-    <div class="topbar-row1">
-    <div class="topbar-left">
+<div class="app-shell" id="appShell">
+  <!-- ==================== 桌面端悬浮卡片式左侧导航（5 栏） ==================== -->
+  <aside class="app-sidebar" id="appSidebar" aria-label="主导航">
+    <div class="side-head">
       <div class="brand" data-action="brand-home" role="button" tabindex="0" aria-label="返回工作台首页">
         <span class="brand-mark" aria-hidden="true"><svg class="brand-mark-svg" viewBox="68 48 896 904" aria-hidden="true"><path d="M 642 238 A 308 308 0 1 0 464 786" fill="none" stroke="#377DF6" stroke-width="138" stroke-linecap="round"/><path d="M 304 338 A 182 182 0 0 0 284 568" fill="none" stroke="#64BAFF" stroke-width="44" stroke-linecap="round" opacity="0.92"/><path d="M 456 336 C 469 402, 490 423, 556 436 C 490 449, 469 470, 456 536 C 443 470, 422 449, 356 436 C 422 423, 443 402, 456 336 Z" fill="#F6BA2A"/><path d="M 786 352 L 558 688 L 904 688" fill="none" stroke="#4A90FF" stroke-width="116" stroke-linecap="round" stroke-linejoin="round"/><path d="M 786 352 L 786 888" fill="none" stroke="#2260DF" stroke-width="116" stroke-linecap="round"/></svg></span>
         <div class="brand-text">
           <span class="brand-title">G4 工作台</span>
         </div>
       </div>
-      <span class="topbar-sep desk-nav-only" aria-hidden="true"></span>
-      <div id="deskViewSwitch" class="seg-group top-view-seg desk-nav-only" role="tablist" aria-label="切换创作中心与作品库">
-        <span class="top-seg-glider" id="deskNavGlider" aria-hidden="true"></span>
-        <button type="button" class="seg-btn active" data-action="select-view" data-view="creation" role="tab" aria-selected="true">
-          <span class="nav-run-dot" hidden aria-hidden="true"></span>
-          <span class="control-label">创作中心</span>
+      <button type="button" id="refreshStatusBtn" class="side-icon-btn" data-action="reload-panel" title="刷新面板并保持当前位置" aria-label="刷新面板">
+        <svg class="ico ico-14" aria-hidden="true"><use href="#i-refresh"/></svg>
+      </button>
+    </div>
+
+    <nav class="side-nav-scroll" aria-label="功能分区">
+      <div class="side-nav-group">
+        <div class="side-nav-label">创作</div>
+        <button type="button" class="side-nav-btn active" data-action="nav-page" data-page="image" aria-current="page">
+          <svg class="ico" aria-hidden="true"><use href="#i-image"/></svg>
+          <span class="side-nav-text">3K 生图</span>
         </button>
-        <button type="button" class="seg-btn" data-action="select-view" data-view="works" role="tab" aria-selected="false">
-          <span class="control-label">作品库</span>
+        <button type="button" class="side-nav-btn" data-action="nav-page" data-page="video">
+          <svg class="ico" aria-hidden="true"><use href="#i-video"/></svg>
+          <span class="side-nav-text">高清视频</span>
+        </button>
+        <button type="button" class="side-nav-btn" data-action="nav-page" data-page="llm">
+          <svg class="ico" aria-hidden="true"><use href="#i-sparkles"/></svg>
+          <span class="side-nav-text">提示词大师</span>
+        </button>
+      </div>
+
+      <div class="side-nav-group">
+        <div class="side-nav-label">内容</div>
+        <button type="button" class="side-nav-btn" data-action="nav-page" data-page="works">
+          <svg class="ico" aria-hidden="true"><use href="#i-grid"/></svg>
+          <span class="side-nav-text">作品库</span>
           <span class="tab-count" id="cnt_total_works_desk">0</span>
         </button>
       </div>
-      <div class="mob-top-right-nav">
-        <div class="mob-page-dots" id="mobPageDots" role="tablist" data-action="mob-nav-toggle" aria-label="切换创作与作品库">
-          <span class="mob-nav-glider" id="mobNavGlider" aria-hidden="true"></span>
-          <span class="mob-page-dot active" data-action="select-view" data-view="creation" data-dot="creation"><span class="nav-run-dot" hidden aria-hidden="true"></span>创作</span>
-          <span class="mob-page-dot" data-action="select-view" data-view="works" data-dot="works">作品库</span>
-        </div>
-        <button type="button" class="mob-fold-top-btn" id="mobFoldTopBtn" data-action="toggle-mob-topbar" aria-expanded="true" aria-label="收起顶部状态面板" title="收起/展开顶部卡片">
-          <svg class="ico" aria-hidden="true"><use href="#i-chevron"/></svg>
+
+      <div class="side-nav-group">
+        <div class="side-nav-label">系统</div>
+        <button type="button" class="side-nav-btn" data-action="nav-page" data-page="settings">
+          <svg class="ico" aria-hidden="true"><use href="#i-sliders"/></svg>
+          <span class="side-nav-text">参数设置</span>
         </button>
       </div>
+    </nav>
+
+    <a id="comfyExtLink" href="#" target="_blank" rel="noopener noreferrer" class="side-comfy-link" title="打开远端 ComfyUI 节点界面" hidden>
+      <svg class="ico ico-14 ico-blue" aria-hidden="true"><use href="#i-external"/></svg>
+      <span class="control-label">ComfyUI</span>
+    </a>
+
+    <div class="side-footer">
+      <span class="side-util-note">跟随系统主题</span>
+      <button type="button" class="side-logout-btn" data-action="logout-panel" title="退出登录">
+        <svg class="ico ico-14" aria-hidden="true"><use href="#i-logout"/></svg>
+        <span>退出</span>
+      </button>
     </div>
+  </aside>
 
-    <div class="topbar-right">
-      <div class="topbar-metrics">
-        <span id="g4Badge" class="status-pill" role="button" tabindex="0" data-action="refresh-status" aria-busy="false" aria-label="点击刷新实例状态" title="点击刷新实例状态">
-          <span class="dot" aria-hidden="true"></span>
-          <span id="g4Text"><span class="status-state">检测中</span></span>
-        </span>
-        <div class="cu-badge-anchor">
-        <span id="cuBadge" class="status-pill" role="button" tabindex="0" data-action="toggle-account-picker" aria-expanded="false" aria-controls="accountPicker" aria-label="查看或切换 Colab 算力账号" title="点击查看或切换 Colab 算力账号">
-          <svg class="ico ico-14 ico-gold" aria-hidden="true"><use href="#i-coins"/></svg>
-          <span id="cuAcctDesk" class="cu-acct-desk" hidden></span>
-          <span id="cuAcctMob" class="cu-acct-mob" hidden></span>
-          <span id="cuAcctSep" class="status-sep" hidden>·</span>
-          <span id="cuText">-- CU</span>
-          <svg class="ico cu-chevron" aria-hidden="true"><use href="#i-chevron"/></svg>
-        </span>
-    <section id="accountPicker" class="account-picker" aria-label="Colab 算力账号管理" aria-hidden="true" inert>
-      <div class="acct-head">
-        <div class="acct-head-left">
-          <span class="warmup-title">Colab 算力账号</span>
-          <span id="acctTotalCu" class="acct-total-cu"></span>
+  <!-- ==================== 右侧主工作区（统一顶部实例状态卡片 + 主内容） ==================== -->
+  <div class="app-content" id="appContent">
+    <header class="top-status-card" id="topStatusCard" aria-label="Colab 实例状态、算力账号与硬件监控">
+      <div class="top-card-row1">
+        <div class="top-card-left">
+          <div class="mob-header-brand" data-action="brand-home" role="button" tabindex="0" aria-label="返回工作台首页">
+            <span class="brand-mark" aria-hidden="true"><svg class="brand-mark-svg" viewBox="68 48 896 904" aria-hidden="true"><path d="M 642 238 A 308 308 0 1 0 464 786" fill="none" stroke="#377DF6" stroke-width="138" stroke-linecap="round"/><path d="M 304 338 A 182 182 0 0 0 284 568" fill="none" stroke="#64BAFF" stroke-width="44" stroke-linecap="round" opacity="0.92"/><path d="M 456 336 C 469 402, 490 423, 556 436 C 490 449, 469 470, 456 536 C 443 470, 422 449, 356 436 C 422 423, 443 402, 456 336 Z" fill="#F6BA2A"/><path d="M 786 352 L 558 688 L 904 688" fill="none" stroke="#4A90FF" stroke-width="116" stroke-linecap="round" stroke-linejoin="round"/><path d="M 786 352 L 786 888" fill="none" stroke="#2260DF" stroke-width="116" stroke-linecap="round"/></svg></span>
+          </div>
+          <h1 class="page-header-title" id="pageHeaderTitle">3K 生图</h1>
+          <span class="page-header-sub" id="pageHeaderSub">参考图挂载与超清直出</span>
         </div>
-        <button type="button" id="refreshAccountsBtn" class="btn btn-xs" data-action="refresh-accounts" title="实时刷新所有账号余额">
-          <svg class="ico ico-14" aria-hidden="true"><use href="#i-refresh"/></svg>
-          <span class="control-label">刷新余额</span>
-        </button>
-      </div>
-      <div id="acctList" class="acct-list"></div>
-      <div id="acctOauthBox" class="acct-oauth-box" hidden>
-        <div class="warmup-hint" style="margin:0">1. 点击打开 Google 官方授权页登录新号并复制授权码；2. 粘贴至下方完成绑定。</div>
-        <div class="acct-oauth-row">
-          <a id="acctOauthLink" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-xs btn-selected">
-            <svg class="ico ico-14" aria-hidden="true"><use href="#i-external"/></svg>
-            <span class="control-label">打开 Google 授权页</span>
-          </a>
-          <button type="button" class="btn btn-xs" data-action="copy-acct-oauth-url"><span class="control-label">复制链接</span></button>
-        </div>
-        <div class="acct-oauth-row">
-          <input type="text" id="acctOauthCodeInp" class="settings-input acct-oauth-inp" placeholder="粘贴 4/0A... 开头的授权码" autocomplete="off" spellcheck="false">
-          <button type="button" id="acctOauthSubmitBtn" class="btn btn-xs btn-primary" data-action="submit-acct-oauth"><span class="control-label">绑定账号</span></button>
-        </div>
-      </div>
-      <div class="dialog-actions">
-        <button type="button" id="toggleAcctOauthBtn" class="btn btn-xs" data-action="toggle-acct-oauth">
-          <svg class="ico ico-14" aria-hidden="true"><use href="#i-plus"/></svg>
-          <span class="control-label">登录新号</span>
-        </button>
-        <span id="acctPickerHint" class="warmup-hint" aria-live="polite"></span>
-        <button type="button" class="btn btn-sm" data-action="close-account-picker"><span class="control-label">收起</span></button>
-      </div>
-    </section>
-        </div>
-      </div>
 
-      <span class="topbar-sep" aria-hidden="true"></span>
+        <div class="top-card-right">
+          <div class="top-compute-group" aria-label="实例状态与算力账号控制">
+            <span id="g4Badge" class="status-pill" role="button" tabindex="0" data-action="refresh-status" aria-busy="false" title="点击刷新 Colab 实例状态">
+              <span class="dot" aria-hidden="true"></span>
+              <span id="g4Text"><span class="status-state">检测中</span></span>
+            </span>
+            <button type="button" id="cuBadge" class="hdr-cu-btn" data-action="toggle-account-picker" aria-expanded="false" aria-controls="accountPicker" title="点击查看或切换 Colab 算力账号">
+              <svg class="ico ico-14 ico-gold" aria-hidden="true"><use href="#i-coins"/></svg>
+              <span id="cuAcctDesk" class="cu-acct-desk" hidden></span>
+              <span id="cuAcctMob" class="cu-acct-mob" hidden></span>
+              <span id="cuAcctSep" class="status-sep" hidden>·</span>
+              <span id="cuText">-- CU</span>
+              <svg class="ico cu-chevron" aria-hidden="true"><use href="#i-chevron"/></svg>
+            </button>
+            <div class="hdr-power-btns">
+              <button type="button" class="btn btn-sm mob-only-btn" data-action="reload-panel" title="刷新面板">
+                <svg class="ico ico-14 ico-blue" aria-hidden="true"><use href="#i-refresh"/></svg>
+                <span class="control-label">刷新</span>
+              </button>
+              <button type="button" id="startG4Btn" class="btn btn-sm" data-power-btn="start" data-action="toggle-power" aria-label="正在检查实例电源状态" aria-busy="true" disabled>
+                <svg class="ico ico-14 ico-green" aria-hidden="true"><use href="#i-power"/></svg>
+                <span class="control-label">检查中</span>
+              </button>
+              <button type="button" id="warmupG4Btn" class="btn btn-sm" data-power-btn="warmup" aria-expanded="false" aria-controls="warmupPicker" data-action="warmup-all" aria-label="预热设备" aria-busy="false" disabled>
+                <svg class="ico ico-14 ico-orange" aria-hidden="true"><use href="#i-bolt"/></svg>
+                <span class="control-label">预热</span>
+              </button>
+            </div>
+          </div>
 
-      <div class="topbar-controls">
-        <button type="button" id="refreshStatusBtn" class="btn btn-sm" data-action="reload-panel" title="刷新面板网页并保持当前所在位置" aria-busy="false">
-          <svg class="ico ico-14 ico-blue" aria-hidden="true"><use href="#i-refresh"/></svg>
-          <span class="control-label">刷新</span>
-        </button>
-        <button type="button" id="startG4Btn" class="btn btn-sm" data-action="toggle-power" aria-label="正在检查实例电源状态" aria-busy="true" disabled>
-          <svg class="ico ico-14 ico-green" aria-hidden="true"><use href="#i-power"/></svg>
-          <span class="control-label">检查中</span>
-        </button>
-        <button type="button" id="warmupG4Btn" class="btn btn-sm" aria-expanded="false" aria-controls="warmupPicker" data-action="warmup-all" aria-label="预热设备：选择已开机实例要预热的项目" aria-busy="false" disabled>
-          <svg class="ico ico-14 ico-orange" aria-hidden="true"><use href="#i-bolt"/></svg>
-          <span class="control-label">预热</span>
-        </button>
-        <button type="button" id="openSettingsBtn" class="btn btn-sm" data-action="open-settings" aria-haspopup="dialog" aria-controls="settingsDialog">
-          <svg class="ico ico-14 ico-purple" aria-hidden="true"><use href="#i-sliders"/></svg>
-          <span class="control-label">设置</span>
-        </button>
-        <a id="comfyExtLink" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-sm desk-only" title="打开远端 ComfyUI 节点界面">
-          <svg class="ico ico-14 ico-blue" aria-hidden="true"><use href="#i-external"/></svg>
-          <span class="control-label">ComfyUI</span>
-        </a>
-        <button type="button" class="btn btn-sm btn-icon-sq desk-only" data-action="logout-panel" title="退出登录" aria-label="退出登录">
-          <svg class="ico ico-14" aria-hidden="true"><use href="#i-logout"/></svg>
-        </button>
+          <span class="hdr-sep" aria-hidden="true"></span>
 
+          <div class="global-task-group">
+            <button type="button" id="globalStopMiniBtn" class="btn btn-xs btn-danger" data-action="cancel-job" hidden title="中止当前运行任务">
+              <span class="control-label">中止</span>
+            </button>
+            <button type="button" id="globalTaskPill" class="global-task-pill is-panel-open" data-action="toggle-task-panel" aria-expanded="true" aria-controls="taskPanelWrap" title="展开或收起实时任务队列与日志">
+              <span class="nav-run-dot" hidden aria-hidden="true"></span>
+              <span class="global-task-pill-text" id="globalTaskPillText">任务队列</span>
+              <svg class="ico ico-14" aria-hidden="true"><use href="#i-panel-right"/></svg>
+            </button>
+          </div>
+
+          <button type="button" class="mob-fold-top-btn" id="mobFoldTopBtn" data-action="toggle-mob-top-card" aria-expanded="true" aria-label="收起顶部状态卡片" title="收起/展开顶部状态卡片">
+            <svg class="ico" aria-hidden="true"><use href="#i-chevron"/></svg>
+          </button>
+        </div>
       </div>
-    </div>
-    </div>
 
     <div id="hwMetricsBar" class="topbar-hw" aria-label="G4 实例实时硬件资源占用">
       <div class="hw-cell">
@@ -3382,46 +3847,15 @@
       </div>
     </div>
 
-    <section id="warmupPicker" class="warmup-picker" aria-label="选择预热项目" aria-hidden="true" inert>
-      <div class="warmup-title">选择预热项目</div>
-      <div class="warmup-options">
-        <label><input type="checkbox" data-warmup-target="v5_int8"><span id="warmupLblImage">Flux / DiT INT8</span></label>
-        <label><input type="checkbox" data-warmup-target="llm"><span id="warmupLblLlm">Qwen 27B GGUF (llama-server)</span></label>
-        <label><input type="checkbox" data-warmup-target="video"><span id="warmupLblVideo">24fps 声画视频</span></label>
-      </div>
-      <p class="warmup-hint">按需勾选要预热常驻的模型；同时勾选媒体（生图/视频）与 LLM 将双路并行加载。</p>
-      <div class="dialog-actions">
-        <span id="warmupHint" class="warmup-hint" aria-live="polite"></span>
-        <button type="button" class="btn btn-sm" data-action="close-warmup"><span class="control-label">收起</span></button>
-        <button type="button" id="startWarmupBtn" class="btn btn-primary btn-sm" data-action="start-warmup" disabled><span class="control-label">开始预热</span></button>
-      </div>
-    </section>
 
-  </div>
     </header>
 
-    <div class="creation-stage" id="creationStage">
-      <div class="creation-left" id="creationLeftCol">
-        <section class="card card-main">
-      <!-- 创作中心模块切换滑块 -->
-      <div class="seg-group full" id="modSwitcher" role="group" aria-label="创作模块切换">
-        <button type="button" class="seg-btn active" data-action="select-mod" data-mod="image" aria-pressed="true">
-          <svg class="ico ico-14 ico-blue" aria-hidden="true"><use href="#i-image"/></svg>
-          <span class="control-label">3K<span class="desk-only">超清</span>生图</span>
-        </button>
-        <button type="button" class="seg-btn" data-action="select-mod" data-mod="edit" aria-pressed="false" hidden disabled style="display:none">
-          <span class="control-label">命令改图</span>
-        </button>
-        <button type="button" class="seg-btn" data-action="select-mod" data-mod="video" aria-pressed="false">
-          <svg class="ico ico-14 ico-purple" aria-hidden="true"><use href="#i-video"/></svg>
-          <span class="control-label">高清视频</span>
-        </button>
-        <button type="button" class="seg-btn" data-action="select-mod" data-mod="llm" aria-pressed="false">
-          <svg class="ico ico-14 ico-green" aria-hidden="true"><use href="#i-sparkles"/></svg>
-          <span class="control-label">提示词<span class="desk-only">大师</span></span>
-        </button>
-      </div>
-
+    <main class="app-stage" id="appStage" data-task-mode="docked">
+      <div class="app-pages" id="appPages">
+        <!-- 页面 1/2/3：创作工作区 -->
+        <section class="page-view active" id="pageCreation" data-page-group="creation">
+          <section class="card card-main">
+            <div id="modSwitcher" hidden aria-hidden="true"></div>
       <div class="creation-body" id="creationBody" data-mod="image">
         <div id="paramPanel" class="param-panel">
           <!-- 模块 1：3K 生图参数 -->
@@ -3592,80 +4026,16 @@
 </div>
         </div>
       </div>
-    </section>
 
-    <!-- 右栏：任务进度 + 紧凑账本 + 实时日志 -->
-    <section class="card card-progress" id="progressCard">
-      <div class="card-head">
-        <div class="card-title">
-          <svg class="ico ico-blue" aria-hidden="true"><use href="#i-list"/></svg>
-          <span>任务队列与记录</span>
-        </div>
-        <div class="card-head-actions">
-          <span id="jobTimer">空闲待命</span>
-          <button type="button" class="btn btn-xs btn-danger" id="clearTasksBtn" data-action="clear-tasks" disabled><span class="control-label">清空记录</span></button>
-        </div>
-      </div>
+          </section>
+        </section>
 
-      <div class="progress-box">
-        <div class="progress-top">
-          <span class="progress-stage" id="progStageText">空闲待命 · 随时可提交任务</span>
-          <span class="progress-eta" id="progEtaText">待命</span>
-        </div>
-        <div class="progress-track" id="progTrack" role="progressbar" aria-label="任务阶段进度" aria-valuemin="0" aria-valuemax="100" aria-valuetext="待命">
-          <div class="progress-fill" id="progFillBar"></div>
-        </div>
-      </div>
-
-      <div class="task-ledger" id="taskLedgerBox">
-        <div class="task-empty">暂无任务记录（提交后在此查看实时进度、排队与历史记录）</div>
-      </div>
-
-      <div class="log-head">
-        <span class="log-label">实时终端日志</span>
-      </div>
-      <div class="log-console" id="logBox">等待提交任务...</div>
-    </section>
-      </div>
-
-      <div class="creation-right" id="creationWorksSlot">
-        <!-- 作品库卡片（创作中心右侧与独立作品库视图共用同一实例） -->
-        <section class="card card-works works-body" id="worksBody">
-    <div class="works-top-card">
-    <div class="works-toolbar">
-      <div class="works-head-left">
-        <div class="works-view-nav">
-          <div class="seg-group top-view-seg desk-nav-only" role="tablist" aria-label="切换创作中心与作品库">
-            <span class="top-seg-glider" aria-hidden="true"></span>
-            <button type="button" class="seg-btn" data-action="select-view" data-view="creation" role="tab" aria-selected="false">
-              <span class="nav-run-dot" hidden aria-hidden="true"></span>
-              <span class="control-label">创作中心</span>
-            </button>
-            <button type="button" class="seg-btn active" data-action="select-view" data-view="works" role="tab" aria-selected="true">
-              <span class="control-label">作品库</span>
-              <span class="tab-count" id="cnt_total_works_standalone">0</span>
-            </button>
-          </div>
-          <span class="topbar-sep desk-nav-only" aria-hidden="true"></span>
-          <div class="topbar-left works-mob-nav-bar">
-            <div class="brand" data-action="brand-home" role="button" tabindex="0" aria-label="返回工作台首页">
-              <span class="brand-mark" aria-hidden="true"><svg class="brand-mark-svg" viewBox="68 48 896 904" aria-hidden="true"><path d="M 642 238 A 308 308 0 1 0 464 786" fill="none" stroke="#377DF6" stroke-width="138" stroke-linecap="round"/><path d="M 304 338 A 182 182 0 0 0 284 568" fill="none" stroke="#64BAFF" stroke-width="44" stroke-linecap="round" opacity="0.92"/><path d="M 456 336 C 469 402, 490 423, 556 436 C 490 449, 469 470, 456 536 C 443 470, 422 449, 356 436 C 422 423, 443 402, 456 336 Z" fill="#F6BA2A"/><path d="M 786 352 L 558 688 L 904 688" fill="none" stroke="#4A90FF" stroke-width="116" stroke-linecap="round" stroke-linejoin="round"/><path d="M 786 352 L 786 888" fill="none" stroke="#2260DF" stroke-width="116" stroke-linecap="round"/></svg></span>
-              <div class="brand-text">
-                <span class="brand-title">G4 工作台</span>
-              </div>
-            </div>
-            <div class="mob-top-right-nav">
-              <div class="mob-page-dots" role="tablist" data-action="mob-nav-toggle" aria-label="切换创作与作品库">
-                <span class="mob-nav-glider" aria-hidden="true"></span>
-                <span class="mob-page-dot" data-action="select-view" data-view="creation" data-dot="creation"><span class="nav-run-dot" hidden aria-hidden="true"></span>创作</span>
-                <span class="mob-page-dot active" data-action="select-view" data-view="works" data-dot="works">作品库</span>
-              </div>
-              <button type="button" class="mob-fold-top-btn" id="mobFoldWorksBtn" data-action="toggle-mob-works-bar" aria-expanded="true" aria-label="收起作品库筛选面板" title="收起/展开作品库筛选栏">
-                <svg class="ico" aria-hidden="true"><use href="#i-chevron"/></svg>
-              </button>
-            </div>
-          </div>
-        </div>
+        <!-- 页面 4：作品库（单一真实 DOM） -->
+        <section class="page-view" id="pageWorks" data-page-group="works">
+          <section class="card card-works works-body" id="worksBody">
+            <div class="works-top-card">
+              <div class="works-toolbar">
+                <div class="works-head-left">
         <div class="tabs-bar" role="group" aria-label="多媒体作品库分类">
           <button type="button" class="tab-pill active" data-action="switch-tab" data-tab="image" aria-pressed="true"><span class="control-label">3K 图片</span> <span class="tab-count" id="cnt_image">0</span></button>
           <button type="button" class="tab-pill" data-action="switch-tab" data-tab="video" aria-pressed="false"><span class="control-label">高清视频</span> <span class="tab-count" id="cnt_video">0</span></button>
@@ -3842,52 +4212,14 @@
       <div id="paginationPages" class="pagination-pages"></div>
     </div>
     </div>
-  </section>
-      </div>
-    </div>
-  </div>
 
-  <!-- 独立全宽作品库视图容器（无顶部卡片，仅展示作品库） -->
-  <div class="works-standalone-pane pane-offscreen" id="worksStandalonePane"></div>
-</main>
+          </section>
+        </section>
 
-<!-- 桌面端：紧贴主卡片框右侧仅在下滚时浮现的回到顶部圆钮 -->
-<div class="float-dock" id="floatDock">
-  <button type="button" id="backToTopBtn" class="back-top-btn" data-action="scroll-top" aria-label="快速回到顶部" title="回到顶部" hidden>
-    <svg class="ico ico-14" aria-hidden="true"><use href="#i-arrow-up"/></svg>
-  </button>
-</div>
-
-
-
-<input type="file" id="fileInputImage" accept="image/png,image/jpeg,image/webp" style="display:none">
-<form id="batchDownloadForm" method="POST" action="/api/download_batch" style="display:none">
-  <input type="hidden" name="payload" id="batchDownloadPayload" value="">
-</form>
-
-<!-- 全屏无损 3K 原图看图层 -->
-<div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-hidden="true" aria-label="3K 原图全屏预览" tabindex="-1">
-  <div class="lightbox-hud" id="lightboxHud"></div>
-  <div class="lightbox-stage" id="lightboxStage">
-    <img id="lightboxImg" src="" alt="图片预览" draggable="false">
-  </div>
-  <button type="button" class="lightbox-nav prev" id="lightboxPrev" data-action="lightbox-prev" aria-label="上一张图片" title="上一张 (←)" hidden><span aria-hidden="true">‹</span></button>
-  <button type="button" class="lightbox-nav next" id="lightboxNext" data-action="lightbox-next" aria-label="下一张图片" title="下一张 (→)" hidden><span aria-hidden="true">›</span></button>
-</div>
-
-<!-- 全局参数与提示词设置大弹窗 -->
-<dialog id="settingsDialog" class="settings-dialog" aria-labelledby="settingsDialogTitle">
-  <div class="settings-shell" id="settingsShell">
-    <div class="settings-head">
-      <div class="settings-head-top">
-        <div class="settings-title-wrap">
-          <h2 id="settingsDialogTitle" class="settings-title">全局参数与提示词设置</h2>
-          <p class="settings-sub">保存后立即生效，无需重启服务或远端实例</p>
-        </div>
-        <button type="button" class="btn btn-sm settings-close-btn" data-action="close-settings" aria-label="关闭设置窗口" title="关闭 (Esc)">
-          <svg class="ico ico-14" aria-hidden="true"><use href="#i-close"/></svg>
-        </button>
-      </div>
+        <!-- 页面 5：参数设置（整页展开，桌面端与侧栏等高齐底） -->
+        <section class="page-view" id="pageSettings" data-page-group="settings">
+          <div class="card settings-page-card" id="settingsShell">
+            <div class="settings-head">
       <div class="seg-group full" id="settingsTabsBar" role="tablist" aria-label="参数设置分类">
         <button type="button" class="seg-btn active" role="tab" aria-selected="true" data-action="switch-settings-tab" data-settings-tab="llm"><span class="control-label">提示词大师</span></button>
         <button type="button" class="seg-btn" role="tab" aria-selected="false" data-action="switch-settings-tab" data-settings-tab="image_prompt"><span class="control-label"><span class="desk-only">生图</span>词条与前后缀</span></button>
@@ -3904,7 +4236,7 @@
               <span>系统提示词全文 (System Prompt)</span>
               <span class="settings-hint">保存时自动同步更新 llm_default_system.txt</span>
             </label>
-            <textarea id="cfgLlmSystemPrompt" class="settings-textarea" style="height:240px;" spellcheck="false"></textarea>
+            <textarea id="cfgLlmSystemPrompt" class="settings-textarea" style="height:280px;" spellcheck="false"></textarea>
           </div>
           <div class="settings-field">
             <label class="settings-label" for="cfgLlmMultiTurnHint">
@@ -4173,19 +4505,171 @@
       </div>
     </div>
 
-    <div class="settings-foot">
-      <div class="settings-foot-left">
-        <button type="button" class="btn btn-sm btn-danger" data-action="logout-panel"><svg class="ico ico-14" aria-hidden="true"><use href="#i-logout"/></svg><span class="control-label">退出登录</span></button>
-        <button type="button" class="btn btn-sm" data-action="reset-settings-section"><span class="control-label">恢复当前页默认</span></button>
-        <button type="button" class="btn btn-sm btn-danger" data-action="reset-settings-all"><span class="control-label">恢复全部默认</span></button>
+
+            <div class="settings-foot">
+              <div class="settings-foot-left">
+                <button type="button" class="btn btn-sm btn-danger mob-only-btn" data-action="logout-panel"><svg class="ico ico-14" aria-hidden="true"><use href="#i-logout"/></svg><span class="control-label">退出登录</span></button>
+                <button type="button" class="btn btn-sm" data-action="reset-settings-section"><span class="control-label">恢复当前页默认</span></button>
+                <button type="button" class="btn btn-sm btn-danger" data-action="reset-settings-all"><span class="control-label">恢复全部默认</span></button>
+              </div>
+              <div class="settings-foot-right">
+                <button type="button" class="btn btn-sm" data-action="reload-settings-form"><span class="control-label">放弃修改</span></button>
+                <button type="button" class="btn btn-primary btn-sm" id="saveSettingsBtn" data-action="save-settings" style="height:34px;padding:0 16px;"><span class="control-label">保存并立即生效</span></button>
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
-      <div class="settings-foot-right">
-        <button type="button" class="btn btn-sm" data-action="close-settings"><span class="control-label">取消</span></button>
-        <button type="button" class="btn btn-primary btn-sm" id="saveSettingsBtn" data-action="save-settings" style="height:34px;padding:0 16px;"><span class="control-label">保存并立即生效</span></button>
+
+      <!-- 实时任务队列与终端日志（创作页右侧常驻 / 作品库与设置页滑出抽屉） -->
+      <aside class="task-panel-wrap" id="taskPanelWrap" aria-label="实时任务队列与日志">
+        <section class="card card-progress" id="progressCard">
+          <div class="task-sheet-handle" aria-hidden="true"></div>
+          <div class="card-head">
+            <div class="card-title">
+              <svg class="ico ico-blue" aria-hidden="true"><use href="#i-list"/></svg>
+              <span>实时任务队列</span>
+            </div>
+            <div class="card-head-actions">
+              <span id="jobTimer">空闲待命</span>
+              <button type="button" class="btn btn-xs btn-danger" id="clearTasksBtn" data-action="clear-tasks" disabled><span class="control-label">清空记录</span></button>
+              <button type="button" class="btn btn-xs task-drawer-close" id="closeTaskDrawerBtn" data-action="close-task-drawer" aria-label="关闭任务抽屉" title="收起 (Esc)">
+                <svg class="ico ico-14" aria-hidden="true"><use href="#i-close"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="progress-box">
+            <div class="progress-top">
+              <span class="progress-stage" id="progStageText">空闲待命 · 随时可提交任务</span>
+              <span class="progress-eta" id="progEtaText">待命</span>
+            </div>
+            <div class="progress-track" id="progTrack" role="progressbar" aria-label="任务阶段进度" aria-valuemin="0" aria-valuemax="100" aria-valuetext="待命">
+              <div class="progress-fill" id="progFillBar"></div>
+            </div>
+          </div>
+
+          <div class="task-ledger" id="taskLedgerBox">
+            <div class="task-empty">暂无任务记录（提交后在此查看实时进度、排队与历史记录）</div>
+          </div>
+
+          <div class="log-head">
+            <span class="log-label">实时终端日志</span>
+          </div>
+          <div class="log-console" id="logBox">等待提交任务...</div>
+        </section>
+      </aside>
+    </main>
+  </div>
+
+  <!-- 手机端底部 5 栏圆角卡片导航（锁视口内 absolute 透明容器，绝不触发 Safari fixed 遮罩/抬高） -->
+  <nav class="mob-bottom-nav" id="mobileBottomNav" aria-label="移动端主导航">
+    <div class="mob-nav-card">
+      <div class="mob-nav-track">
+        <span class="mob-nav-glider" id="mobNavGlider" aria-hidden="true"></span>
+        <button type="button" class="mob-nav-item active" data-action="nav-page" data-page="image" aria-current="page">
+          <span class="mob-nav-icon-wrap"><svg class="ico" aria-hidden="true"><use href="#i-image"/></svg></span>
+          <span class="mob-nav-lbl">生图</span>
+        </button>
+        <button type="button" class="mob-nav-item" data-action="nav-page" data-page="video">
+          <span class="mob-nav-icon-wrap"><svg class="ico" aria-hidden="true"><use href="#i-video"/></svg></span>
+          <span class="mob-nav-lbl">视频</span>
+        </button>
+        <button type="button" class="mob-nav-item" data-action="nav-page" data-page="llm">
+          <span class="mob-nav-icon-wrap"><svg class="ico" aria-hidden="true"><use href="#i-sparkles"/></svg></span>
+          <span class="mob-nav-lbl">提示词</span>
+        </button>
+        <button type="button" class="mob-nav-item" data-action="nav-page" data-page="works">
+          <span class="mob-nav-icon-wrap"><svg class="ico" aria-hidden="true"><use href="#i-grid"/></svg></span>
+          <span class="mob-nav-lbl">作品库</span>
+        </button>
+        <button type="button" class="mob-nav-item" data-action="nav-page" data-page="settings">
+          <span class="mob-nav-icon-wrap"><svg class="ico" aria-hidden="true"><use href="#i-sliders"/></svg></span>
+          <span class="mob-nav-lbl">设置</span>
+        </button>
       </div>
     </div>
+  </nav>
+</div>
+
+<!-- 抽屉遮罩 -->
+<div class="task-drawer-backdrop" id="taskDrawerBackdrop" data-action="close-task-drawer" aria-hidden="true"></div>
+
+<!-- 全局算力账号管理与切换浮层 -->
+<section id="accountPicker" class="account-picker account-picker-fixed" aria-label="Colab 算力账号管理" aria-hidden="true" inert>
+  <div class="acct-head">
+    <div class="acct-head-left">
+      <span class="warmup-title">Colab 算力账号</span>
+      <span id="acctTotalCu" class="acct-total-cu"></span>
+    </div>
+    <button type="button" id="refreshAccountsBtn" class="btn btn-xs" data-action="refresh-accounts" title="实时刷新所有账号余额">
+      <svg class="ico ico-14" aria-hidden="true"><use href="#i-refresh"/></svg>
+      <span class="control-label">刷新余额</span>
+    </button>
   </div>
-</dialog>
+  <div id="acctList" class="acct-list"></div>
+  <div id="acctOauthBox" class="acct-oauth-box" hidden>
+    <div class="warmup-hint" style="margin:0">1. 点击打开 Google 官方授权页登录新号并复制授权码；2. 粘贴至下方完成绑定（云盘加密同步保持主号不变）。</div>
+    <div class="acct-oauth-row">
+      <a id="acctOauthLink" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-xs btn-selected">
+        <svg class="ico ico-14" aria-hidden="true"><use href="#i-external"/></svg>
+        <span class="control-label">打开 Google 授权页</span>
+      </a>
+      <button type="button" class="btn btn-xs" data-action="copy-acct-oauth-url"><span class="control-label">复制链接</span></button>
+    </div>
+    <div class="acct-oauth-row">
+      <input type="text" id="acctOauthCodeInp" class="settings-input acct-oauth-inp" placeholder="粘贴 4/0A... 开头的授权码" autocomplete="off" spellcheck="false">
+      <button type="button" id="acctOauthSubmitBtn" class="btn btn-xs btn-primary" data-action="submit-acct-oauth"><span class="control-label">绑定账号</span></button>
+    </div>
+  </div>
+  <div class="dialog-actions">
+    <button type="button" id="toggleAcctOauthBtn" class="btn btn-xs" data-action="toggle-acct-oauth">
+      <svg class="ico ico-14" aria-hidden="true"><use href="#i-plus"/></svg>
+      <span class="control-label">登录新号</span>
+    </button>
+    <span id="acctPickerHint" class="warmup-hint" aria-live="polite"></span>
+    <button type="button" class="btn btn-sm" data-action="close-account-picker"><span class="control-label">收起</span></button>
+  </div>
+</section>
+
+<!-- 预热模型选择器浮层 -->
+    <section id="warmupPicker" class="warmup-picker warmup-picker-fixed" aria-label="选择预热项目" aria-hidden="true" inert>
+      <div class="warmup-title">选择预热项目</div>
+      <div class="warmup-options">
+        <label><input type="checkbox" data-warmup-target="v5_int8"><span id="warmupLblImage">Flux / DiT INT8</span></label>
+        <label><input type="checkbox" data-warmup-target="llm"><span id="warmupLblLlm">Qwen 27B GGUF (llama-server)</span></label>
+        <label><input type="checkbox" data-warmup-target="video"><span id="warmupLblVideo">24fps 声画视频</span></label>
+      </div>
+      <p class="warmup-hint">按需勾选要预热常驻的模型；同时勾选媒体（生图/视频）与 LLM 将双路并行加载。</p>
+      <div class="dialog-actions">
+        <span id="warmupHint" class="warmup-hint" aria-live="polite"></span>
+        <button type="button" class="btn btn-sm" data-action="close-warmup"><span class="control-label">收起</span></button>
+        <button type="button" id="startWarmupBtn" class="btn btn-primary btn-sm" data-action="start-warmup" disabled><span class="control-label">开始预热</span></button>
+      </div>
+    </section>
+
+<!-- 回到顶部悬浮圆钮 -->
+<div class="float-dock" id="floatDock">
+  <button type="button" id="backToTopBtn" class="back-top-btn" data-action="scroll-top" aria-label="快速回到顶部" title="回到顶部" hidden>
+    <svg class="ico ico-14" aria-hidden="true"><use href="#i-arrow-up"/></svg>
+  </button>
+</div>
+
+<input type="file" id="fileInputImage" accept="image/png,image/jpeg,image/webp" style="display:none">
+<form id="batchDownloadForm" method="POST" action="/api/download_batch" style="display:none">
+  <input type="hidden" name="payload" id="batchDownloadPayload" value="">
+</form>
+
+<!-- 全屏无损 3K 原图看图层 -->
+<div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-hidden="true" aria-label="3K 原图全屏预览" tabindex="-1">
+  <div class="lightbox-hud" id="lightboxHud"></div>
+  <div class="lightbox-stage" id="lightboxStage">
+    <img id="lightboxImg" src="" alt="图片预览" draggable="false">
+  </div>
+  <button type="button" class="lightbox-nav prev" id="lightboxPrev" data-action="lightbox-prev" aria-label="上一张图片" title="上一张 (←)" hidden><span aria-hidden="true">‹</span></button>
+  <button type="button" class="lightbox-nav next" id="lightboxNext" data-action="lightbox-next" aria-label="下一张图片" title="下一张 (→)" hidden><span aria-hidden="true">›</span></button>
+</div>
+
 
 <!-- 二次确认对话框（统一视觉规范：写明确认删除「名称」？和删除后无法恢复。） -->
 <dialog id="confirmDialog" class="confirm-dialog">
@@ -4226,52 +4710,18 @@ function isFinePointer() {
 function syncSystemTheme() {
   const isDark = sysDarkMedia.matches;
   document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+  const mt = document.getElementById('metaThemeColor');
+  if (mt) mt.setAttribute('content', isDark ? '#0B111C' : '#EEF1F6');
 }
 sysDarkMedia.addEventListener('change', syncSystemTheme);
 syncSystemTheme();
+(function detectPwaStandalone() {
+  try {
+    const isPwa = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+    document.documentElement.classList.toggle('pwa-standalone', !!isPwa);
+  } catch (_) {}
+})();
 
-
-/* 手机端顶部状态卡片收起/展开（收起后仅保留最顶部标题与右侧切换滑块那一行） */
-const MOB_TOP_COLLAPSE_KEY = 'g4_mob_top_collapsed';
-const MOB_WORKS_COLLAPSE_KEY = 'g4_mob_works_collapsed';
-let mobTopCollapsed = false;
-let mobWorksCollapsed = false;
-
-function applyMobTopbarCollapsed(collapsed, persist = true) {
-  mobTopCollapsed = !!collapsed;
-  const inner = document.querySelector('.topbar-inner');
-  const btn = document.getElementById('mobFoldTopBtn');
-  if (inner) inner.classList.toggle('mob-collapsed', mobTopCollapsed);
-  if (btn) {
-    btn.setAttribute('aria-expanded', mobTopCollapsed ? 'false' : 'true');
-    btn.setAttribute('aria-label', mobTopCollapsed ? '展开顶部状态面板' : '收起顶部状态面板');
-  }
-  if (mobTopCollapsed) closeWarmupPicker(false);
-  if (persist) {
-    try { localStorage.setItem(MOB_TOP_COLLAPSE_KEY, mobTopCollapsed ? '1' : '0'); } catch (_) {}
-  }
-}
-
-function applyMobWorksCollapsed(collapsed, persist = true) {
-  mobWorksCollapsed = !!collapsed;
-  document.querySelectorAll('.works-body').forEach(wb => wb.classList.toggle('mob-works-collapsed', mobWorksCollapsed));
-  document.querySelectorAll('[data-action="toggle-mob-works-bar"]').forEach(btn => {
-    btn.setAttribute('aria-expanded', mobWorksCollapsed ? 'false' : 'true');
-    btn.setAttribute('aria-label', mobWorksCollapsed ? '展开作品库筛选面板' : '收起作品库筛选面板');
-  });
-  if (persist) {
-    try { localStorage.setItem(MOB_WORKS_COLLAPSE_KEY, mobWorksCollapsed ? '1' : '0'); } catch (_) {}
-  }
-}
-
-try {
-  if (localStorage.getItem(MOB_TOP_COLLAPSE_KEY) === '1') {
-    applyMobTopbarCollapsed(true, false);
-  }
-  if (localStorage.getItem(MOB_WORKS_COLLAPSE_KEY) === '1') {
-    applyMobWorksCollapsed(true, false);
-  }
-} catch (_) {}
 
 /* ==================== 核心状态与常量 ==================== */
 const VALID_CREATION_MODS = ['image', 'video', 'llm'];
@@ -4422,501 +4872,220 @@ function getActiveInputEl() {
   return document.getElementById(INPUT_ID_MAP[currentMod] || 'promptInputImage');
 }
 
-/* ==================== 视图切换（创作中心 / 作品库）与创作模块切换 ==================== */
-function syncNavRunningDots(isRunning) {
-  document.querySelectorAll('.nav-run-dot').forEach(dot => {
-    dot.hidden = !isRunning;
-  });
+/* ==================== 5 栏统一路由 + 实时任务栏（常驻/抽屉）+ 移动端内滚 ==================== */
+const VALID_PAGES = ['image', 'video', 'llm', 'works', 'settings'];
+const PAGE_META = {
+  image: { title: '3K 生图', sub: '参考图挂载与超清直出', group: 'creation' },
+  video: { title: '高清视频', sub: '24fps 声画视频生成与首帧图生视频', group: 'creation' },
+  llm: { title: '提示词大师', sub: '多轮提示词构思与修改', group: 'creation' },
+  works: { title: '作品库', sub: '3K 图片 · 高清视频 · 上传素材 · 提示词历史', group: 'works' },
+  settings: { title: '参数设置', sub: '系统提示词 · 生图前后缀与清洗 · 工作流参数', group: 'settings' }
+};
+const MOB_TOP_FOLD_KEY = 'g4_mob_top_card_folded_v4';
+const TASK_COLLAPSED_KEY = 'g4_task_panel_collapsed_v2';
+let currentPage = 'image';
+let mobTopCardFolded = false;
+let taskPanelCollapsed = false;
+let taskDrawerOpen = false;
+const pageScrollMemory = { image: 0, video: 0, llm: 0, works: 0, settings: 0 };
+
+function applyMobTopCardFolded(folded, persist = true) {
+  mobTopCardFolded = !!folded;
+  const card = document.getElementById('topStatusCard');
+  const btn = document.getElementById('mobFoldTopBtn');
+  if (card) card.classList.toggle('mob-collapsed', mobTopCardFolded);
+  if (btn) {
+    btn.setAttribute('aria-expanded', mobTopCardFolded ? 'false' : 'true');
+    btn.setAttribute('aria-label', mobTopCardFolded ? '展开顶部状态卡片' : '收起顶部状态卡片');
+  }
+  if (mobTopCardFolded) {
+    closeWarmupPicker(false);
+    setAccountPickerOpen(false);
+  }
+  if (persist) {
+    try { localStorage.setItem(MOB_TOP_FOLD_KEY, mobTopCardFolded ? '1' : '0'); } catch (_) {}
+  }
+}
+try {
+  if (localStorage.getItem(MOB_TOP_FOLD_KEY) === '1') applyMobTopCardFolded(true, false);
+  taskPanelCollapsed = localStorage.getItem(TASK_COLLAPSED_KEY) === '1';
+} catch (_) {}
+
+function syncInactiveWorksMirror() {}
+function isCreationPage(page) { return page === 'image' || page === 'video' || page === 'llm'; }
+
+function isMobileScrollShell() { return (window.innerWidth || 1280) <= 1024; }
+function getMainScrollY() {
+  if (isMobileScrollShell()) {
+    const c = document.getElementById('appContent');
+    return c ? Math.max(0, c.scrollTop || 0) : 0;
+  }
+  return Math.max(0, window.scrollY || document.documentElement.scrollTop || 0);
+}
+function setMainScrollY(y, smooth = false) {
+  const target = Math.max(0, y || 0);
+  const beh = (smooth && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) ? 'smooth' : 'auto';
+  if (isMobileScrollShell()) {
+    const c = document.getElementById('appContent');
+    if (c) c.scrollTo({ top: target, behavior: beh });
+  } else {
+    window.scrollTo({ top: target, behavior: beh });
+  }
 }
 
-let _lastGliderHalf = '';
-
-const viewScrollMemory = { creation: 0, works: 0 };
-
-function getPaneEl(view) {
-  return document.getElementById(view === 'works' ? 'worksStandalonePane' : 'colMain');
+function syncNavRunningDots(isRunning, badgeText = '') {
+  document.querySelectorAll('.nav-run-dot').forEach(dot => { dot.hidden = !isRunning; });
+  const pill = document.getElementById('globalTaskPill');
+  if (pill) pill.classList.toggle('is-running', !!isRunning);
+  const stopMini = document.getElementById('globalStopMiniBtn');
+  if (stopMini) stopMini.hidden = !isRunning;
+  const txtEl = document.getElementById('globalTaskPillText');
+  if (txtEl && badgeText) txtEl.textContent = badgeText;
 }
 
-function syncInactiveWorksMirror() {
-  const worksBody = document.getElementById('worksBody');
-  const worksPane = document.getElementById('worksStandalonePane');
-  if (!worksBody || !worksPane) return;
-  const prevCloneOpenTriggerId = worksPane.querySelector('.drive-sync-picker.open')?.parentElement?.querySelector('.drive-sync-trigger')?.dataset?.mirrorId || '';
-  const clone = worksBody.cloneNode(true);
-  clone.removeAttribute('id');
-  clone.classList.add('works-body-clone');
-  clone.querySelectorAll('.drive-sync-picker').forEach(p => {
-    p.classList.remove('open');
-    p.setAttribute('aria-hidden', 'true');
-    if ('inert' in p) p.inert = true;
+function syncTaskPanelLayout() {
+  const stage = document.getElementById('appStage');
+  const backdrop = document.getElementById('taskDrawerBackdrop');
+  const pill = document.getElementById('globalTaskPill');
+  if (!stage) return;
+  const docked = isCreationPage(currentPage);
+  stage.dataset.taskMode = docked ? 'docked' : 'drawer';
+  stage.classList.toggle('task-collapsed', docked && taskPanelCollapsed);
+  const isDrawerVis = !docked && taskDrawerOpen;
+  stage.classList.toggle('drawer-open', isDrawerVis);
+  if (backdrop) {
+    backdrop.classList.toggle('open', isDrawerVis);
+    backdrop.setAttribute('aria-hidden', isDrawerVis ? 'false' : 'true');
+  }
+  if (pill) {
+    const expanded = docked ? !taskPanelCollapsed : isDrawerVis;
+    pill.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    pill.classList.toggle('is-panel-open', expanded);
+  }
+}
+
+function setTaskDrawerOpen(open) {
+  taskDrawerOpen = !!open;
+  syncTaskPanelLayout();
+}
+
+function toggleTaskPanel() {
+  if (isCreationPage(currentPage)) {
+    if (isMobileScrollShell()) {
+      document.getElementById('progressCard')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    taskPanelCollapsed = !taskPanelCollapsed;
+    try { localStorage.setItem(TASK_COLLAPSED_KEY, taskPanelCollapsed ? '1' : '0'); } catch (_) {}
+    syncTaskPanelLayout();
+    return;
+  }
+  setTaskDrawerOpen(!taskDrawerOpen);
+}
+
+function navigateTo(page, opts = {}) {
+  if (!VALID_PAGES.includes(page)) page = 'image';
+  const prevPage = currentPage;
+  const initialRestore = !!opts.initialRestore;
+  if (!initialRestore && prevPage !== page) {
+    pageScrollMemory[prevPage] = getMainScrollY();
+  }
+  currentPage = page;
+  document.body.dataset.page = page;
+  currentView = (page === 'works') ? 'works' : 'creation';
+  taskDrawerOpen = false;
+  closeAllDriveSyncPickers();
+  closeWarmupPicker(false);
+  setAccountPickerOpen(false);
+  closeZenoSelect(false);
+
+  const meta = PAGE_META[page] || PAGE_META.image;
+  const hTitle = document.getElementById('pageHeaderTitle');
+  const hSub = document.getElementById('pageHeaderSub');
+  if (hTitle) hTitle.textContent = meta.title;
+  if (hSub) hSub.textContent = meta.sub;
+
+  document.querySelectorAll('[data-action="nav-page"]').forEach(btn => {
+    const isAct = btn.dataset.page === page;
+    btn.classList.toggle('active', isAct);
+    if (isAct) btn.setAttribute('aria-current', 'page');
+    else btn.removeAttribute('aria-current');
   });
-  clone.querySelectorAll('.drive-sync-trigger').forEach(b => b.setAttribute('aria-expanded', 'false'));
-  clone.querySelectorAll('[id]').forEach(elNode => {
-    elNode.dataset.mirrorId = elNode.id;
-    elNode.removeAttribute('id');
-  });
-  if (prevCloneOpenTriggerId) {
-    const reopenBtn = clone.querySelector(`[data-mirror-id="${prevCloneOpenTriggerId}"]`);
-    const reopenBox = reopenBtn?.closest('.drive-sync-anchor')?.querySelector('.drive-sync-picker');
-    if (reopenBtn && reopenBox) {
-      reopenBox.classList.add('open');
-      reopenBox.setAttribute('aria-hidden', 'false');
-      if ('inert' in reopenBox) reopenBox.inert = false;
-      reopenBtn.setAttribute('aria-expanded', 'true');
+  const mobGlider = document.getElementById('mobNavGlider');
+  if (mobGlider) {
+    const pIdx = Math.max(0, VALID_PAGES.indexOf(page));
+    if (initialRestore) {
+      mobGlider.style.transition = 'none';
+      mobGlider.style.transform = `translate3d(${pIdx * 100}%, 0, 0)`;
+      void mobGlider.offsetWidth;
+      mobGlider.style.transition = '';
+    } else {
+      mobGlider.style.transform = `translate3d(${pIdx * 100}%, 0, 0)`;
     }
   }
-  clone.querySelectorAll('label[for="gallerySearchInput"]').forEach(lbl => lbl.removeAttribute('for'));
-  clone.querySelectorAll('.filter-search').forEach(inp => {
-    inp.value = gallerySearchQuery || '';
-    inp.addEventListener('input', (e) => {
-      const val = e.target.value || '';
-      const origInp = document.getElementById('gallerySearchInput');
-      if (origInp && origInp.value !== val) origInp.value = val;
-      clearTimeout(searchDebounce);
-      searchDebounce = setTimeout(() => {
-        gallerySearchQuery = val;
-        galleryPage = 1;
-        renderGallery(true);
-        savePanelUiState();
-      }, 150);
-    });
+  document.querySelectorAll('.page-view').forEach(sec => {
+    sec.classList.toggle('active', sec.dataset.pageGroup === meta.group);
   });
-  clone.querySelectorAll('img').forEach((img, idx) => {
-    if (idx < 12) img.loading = 'eager';
-    img.decoding = 'sync';
-  });
-  clone.querySelectorAll('video').forEach(v => {
-    try { v.pause(); v.removeAttribute('autoplay'); } catch (_) {}
-  });
-  worksPane.replaceChildren(clone);
-}
 
-const IOS_SPRING_EASE = 'cubic-bezier(0.32, 0.72, 0, 1)';
-
-function setNavGliderProgress(progress, durationMs = 0) {
-  const p = Math.max(0, Math.min(1, progress));
-  const trans = durationMs > 0 ? `transform ${durationMs}ms ${IOS_SPRING_EASE}` : 'none';
-  const tf = `translate3d(${(p * 100).toFixed(2)}%, 0, 0)`;
-  document.querySelectorAll('.top-seg-glider, .mob-nav-glider').forEach(g => {
-    if (g.style.transition !== trans) g.style.transition = trans;
-    if (g.style.transform !== tf) g.style.transform = tf;
-  });
-  const activeView = p >= 0.5 ? 'works' : 'creation';
-  if (activeView !== _lastGliderHalf || durationMs > 0) {
-    _lastGliderHalf = activeView;
-    document.querySelectorAll('[data-action="select-view"]').forEach(btn => {
-      const isAct = btn.dataset.view === activeView;
-      btn.classList.toggle('active', isAct);
-      btn.setAttribute('aria-selected', isAct ? 'true' : 'false');
-    });
-  }
-}
-
-function syncViewFabUI() {
-  _lastGliderHalf = '';
-  setNavGliderProgress(currentView === 'works' ? 1 : 0, 0);
-}
-
-function selectView(view, initialRestore = false) {
-  if (view !== 'creation' && view !== 'works') return;
-  const prevView = currentView;
-  if (!initialRestore && prevView !== view) {
-    viewScrollMemory[prevView] = Math.max(0, window.scrollY || 0);
-  }
-  currentView = view;
-  const isWorks = view === 'works';
-  const ws = document.getElementById('workspace');
-  if (ws) ws.classList.remove('is-swiping', 'is-animating');
-
-  const worksPane = document.getElementById('worksStandalonePane');
-  if (worksPane && !worksPane.querySelector('.works-body-clone')) {
-    syncInactiveWorksMirror();
+  if (isCreationPage(page)) {
+    applyCreationModuleUI(page);
+  } else if (page === 'works') {
+    if (!_lastGallerySig) renderGallery(false);
+  } else if (page === 'settings') {
+    ensureSettingsPagePopulated();
   }
 
-  const colMain = document.getElementById('colMain');
-  const activeEl = isWorks ? worksPane : colMain;
-  const parkedEl = isWorks ? colMain : worksPane;
-
-  if (activeEl) {
-    activeEl.classList.remove('pane-offscreen', 'pane-sliding', 'no-child-trans');
-    activeEl.style.transition = 'none';
-    activeEl.style.top = '';
-    activeEl.style.transform = 'translate3d(0px, 0, 0)';
-  }
-  if (parkedEl) {
-    parkedEl.classList.remove('pane-sliding', 'no-child-trans');
-    parkedEl.style.transition = 'none';
-    parkedEl.style.top = '';
-    parkedEl.style.transform = '';
-    parkedEl.classList.add('pane-offscreen');
-  }
-
-  syncViewFabUI();
-  closeAllDriveSyncPickers();
+  syncTaskPanelLayout();
 
   if (!initialRestore) {
-    if (!_lastGallerySig) {
-      renderGallery(false);
+    if (prevPage !== page) {
+      setMainScrollY(opts.scrollTop ? 0 : (pageScrollMemory[page] || 0), false);
     }
-    if (prevView !== view) {
-      const targetY = viewScrollMemory[view] || 0;
-      if (Math.abs((window.scrollY || 0) - targetY) > 1) {
-        window.scrollTo(0, targetY);
-      }
-    }
-    setTimeout(savePanelUiState, 80);
+    if (!_restoringUiState) setTimeout(savePanelUiState, 60);
   }
   syncBackToTopVisibility();
 }
 
+function selectView(view, initialRestore = false) {
+  if (view === 'works') navigateTo('works', { initialRestore });
+  else navigateTo(VALID_CREATION_MODS.includes(currentMod) ? currentMod : 'image', { initialRestore });
+}
+function animateViewSwipeTo(view) { selectView(view); }
+
+document.addEventListener('focusin', (e) => {
+  if (!isMobileScrollShell()) return;
+  if (e.target && e.target.matches && e.target.matches('input, textarea, [contenteditable="true"]')) {
+    document.getElementById('mobileBottomNav')?.classList.add('kb-hidden');
+  }
+});
+document.addEventListener('focusout', () => {
+  setTimeout(() => {
+    const a = document.activeElement;
+    if (!a || !a.matches || !a.matches('input, textarea, [contenteditable="true"]')) {
+      document.getElementById('mobileBottomNav')?.classList.remove('kb-hidden');
+    }
+  }, 120);
+});
+
 function syncBackToTopVisibility() {
-  const y = window.scrollY || document.documentElement.scrollTop || 0;
+  const y = getMainScrollY();
   const topBtn = document.getElementById('backToTopBtn');
-  if (topBtn) topBtn.hidden = y <= 220;
+  if (topBtn) topBtn.hidden = y <= 240;
 }
 window.addEventListener('scroll', () => {
   syncBackToTopVisibility();
   scheduleSavePanelUiState();
 }, { passive: true });
+document.getElementById('appContent')?.addEventListener('scroll', () => {
+  syncBackToTopVisibility();
+  scheduleSavePanelUiState();
+}, { passive: true });
+window.addEventListener('resize', () => {
+  syncTaskPanelLayout();
+  if (document.getElementById('warmupPicker')?.classList.contains('open')) positionWarmupPicker();
+  if (document.getElementById('accountPicker')?.classList.contains('open')) alignAccountPickerToBadge();
+});
 syncBackToTopVisibility();
-
-/* ==================== iOS 原生弹簧级双端滑动引擎（常驻双层零搬移 + 视口精确对齐） ==================== */
-let _swipeAnimating = false;
-let _suppressClickUntil = 0;
-
-function isSwipeBlockedContext(target) {
-  if (_swipeAnimating) return true;
-  if (document.querySelector('dialog[open]')) return true;
-  if (document.getElementById('lightbox')?.classList.contains('open')) return true;
-  if (_randomPickerOpen || activeZSelect) return true;
-  if (document.getElementById('warmupPicker')?.classList.contains('open')) return true;
-  if (document.getElementById('accountPicker')?.classList.contains('open')) return true;
-  if (document.querySelector('.drive-sync-picker.open')) return true;
-  if (!target || !(target instanceof Element)) return false;
-  return !!target.closest(
-    'input, textarea, select, [contenteditable="true"], button, a, label, summary, video, ' +
-    '.seg-group, .tabs-bar, .mob-page-dots, .ref-strip-list, .z-select, .z-select-menu, .random-count-picker, ' +
-    '.warmup-picker, .account-picker, .drive-sync-picker, .log-console, .chat-msg, .img-prompt-text, .text-card, .task-detail-box, .topbar'
-  );
-}
-
-function setupSlidePreview(targetView, initDir) {
-  if (!_lastGallerySig) renderGallery(false);
-  const ws = document.getElementById('workspace');
-  const curEl = getPaneEl(currentView);
-  const nextEl = getPaneEl(targetView);
-  if (!ws || !curEl || !nextEl) return null;
-
-  const span = Math.max(300, curEl.clientWidth || (window.innerWidth - 20)) + 14;
-  const curY = Math.max(0, window.scrollY || 0);
-  const nextY = viewScrollMemory[targetView] || 0;
-
-  curEl.classList.add('no-child-trans');
-  nextEl.classList.add('no-child-trans');
-
-  curEl.style.transition = 'none';
-  nextEl.style.transition = 'none';
-  curEl.style.transform = 'translate3d(0px, 0, 0)';
-
-  nextEl.style.top = `${curY - nextY}px`;
-  nextEl.classList.remove('pane-offscreen');
-  nextEl.classList.add('pane-sliding');
-  nextEl.style.transform = `translate3d(${(initDir * span).toFixed(1)}px, 0, 0)`;
-
-  const ctx = { ws, curEl, nextEl, span, curY, nextY };
-  void nextEl.offsetWidth;
-  return ctx;
-}
-
-function waitTransformFinish(elNode, durMs, doneFn) {
-  let fired = false;
-  const finish = () => {
-    if (fired) return;
-    fired = true;
-    elNode.removeEventListener('transitionend', onEnd);
-    doneFn();
-  };
-  const onEnd = (ev) => {
-    if (ev.target === elNode && ev.propertyName === 'transform') finish();
-  };
-  elNode.addEventListener('transitionend', onEnd);
-  setTimeout(finish, durMs + 42);
-}
-
-function animateViewSwipeTo(targetView, dirOverride = 0) {
-  if (_swipeAnimating || targetView === currentView) return;
-  const dir = dirOverride !== 0 ? dirOverride : (targetView === 'works' ? 1 : -1);
-  const ctx = setupSlidePreview(targetView, dir);
-  if (!ctx) {
-    selectView(targetView);
-    return;
-  }
-  _swipeAnimating = true;
-  const { ws, curEl, nextEl, span } = ctx;
-  ws.classList.add('is-animating');
-
-  const isMob = window.innerWidth <= 680;
-  const dur = isMob ? 275 : 235;
-  curEl.style.transition = `transform ${dur}ms ${IOS_SPRING_EASE}`;
-  nextEl.style.transition = `transform ${dur}ms ${IOS_SPRING_EASE}`;
-  curEl.style.transform = `translate3d(${-dir * span}px, 0, 0)`;
-  nextEl.style.transform = 'translate3d(0px, 0, 0)';
-  setNavGliderProgress(targetView === 'works' ? 1 : 0, dur);
-
-  waitTransformFinish(nextEl, dur, () => {
-    ws.classList.remove('is-animating');
-    selectView(targetView);
-    _swipeAnimating = false;
-  });
-}
-
-(function initUniversalSwipePager() {
-  const ws = document.getElementById('workspace');
-  if (!ws) return;
-
-  window.addEventListener('click', (e) => {
-    if (Date.now() < _suppressClickUntil) {
-      e.preventDefault();
-      e.stopPropagation();
-      _suppressClickUntil = 0;
-    }
-  }, true);
-
-  ws.addEventListener('dragstart', (e) => {
-    if (e.target instanceof Element && e.target.closest('img')) {
-      e.preventDefault();
-    }
-  });
-
-  let tracking = false;
-  let swiping = false;
-  let isTouch = false;
-  let startX = 0;
-  let startY = 0;
-  let latestX = 0;
-  let lastSampleX = 0;
-  let lastTs = 0;
-  let vx = 0;
-  let rafId = 0;
-  let slideCtx = null;
-  let targetView = '';
-  let previewDir = 1;
-
-  function renderDragFrame() {
-    rafId = 0;
-    if (!swiping || !slideCtx || _swipeAnimating) return;
-    const dx = latestX - startX;
-    const wantDir = dx <= 0 ? 1 : -1;
-    previewDir = wantDir;
-    const span = slideCtx.span;
-    const clampedDx = wantDir === 1 ? Math.max(-span, Math.min(0, dx)) : Math.min(span, Math.max(0, dx));
-    slideCtx.curEl.style.transform = `translate3d(${clampedDx.toFixed(1)}px, 0, 0)`;
-    slideCtx.nextEl.style.transform = `translate3d(${(wantDir * span + clampedDx).toFixed(1)}px, 0, 0)`;
-
-    const ratio = Math.min(1, Math.abs(clampedDx) / span);
-    setNavGliderProgress(currentView === 'creation' ? ratio : (1 - ratio), 0);
-  }
-
-  function beginTrack(x, y, target, touchMode) {
-    if (isSwipeBlockedContext(target)) return false;
-    if (touchMode && (x < 20 || x > window.innerWidth - 20)) return false;
-    tracking = true;
-    swiping = false;
-    isTouch = touchMode;
-    startX = latestX = lastSampleX = x;
-    startY = y;
-    lastTs = performance.now();
-    vx = 0;
-    slideCtx = null;
-    targetView = '';
-    previewDir = 1;
-    return true;
-  }
-
-  function updateTrack(x, y, rawEvent) {
-    if (!tracking || _swipeAnimating) return;
-    const dx = x - startX;
-    const dy = y - startY;
-
-    if (!swiping) {
-      const absX = Math.abs(dx);
-      const absY = Math.abs(dy);
-      const lockThreshold = isTouch ? 10 : 8;
-      if (absY > lockThreshold && absY > absX * 1.1) {
-        tracking = false;
-        return;
-      }
-      if (absX < lockThreshold || absX <= absY * 1.15) return;
-
-      try { window.getSelection()?.removeAllRanges(); } catch (_) {}
-      targetView = currentView === 'works' ? 'creation' : 'works';
-      slideCtx = setupSlidePreview(targetView, dx <= 0 ? 1 : -1);
-      if (!slideCtx) { tracking = false; return; }
-      swiping = true;
-      ws.classList.add('is-swiping');
-    }
-
-    if (rawEvent && rawEvent.cancelable) rawEvent.preventDefault();
-
-    const now = performance.now();
-    const dt = now - lastTs;
-    if (dt >= 4) {
-      const instV = (x - lastSampleX) / dt;
-      vx = vx === 0 ? instV : (vx * 0.35 + instV * 0.65);
-      lastSampleX = x;
-      lastTs = now;
-    }
-    latestX = x;
-    if (!rafId) {
-      rafId = requestAnimationFrame(renderDragFrame);
-    }
-  }
-
-  function endTrack(cancelled = false) {
-    if (!tracking) return;
-    tracking = false;
-    if (rafId) {
-      cancelAnimationFrame(rafId);
-      rafId = 0;
-    }
-    if (!swiping) return;
-    swiping = false;
-    if (!isTouch) _suppressClickUntil = Date.now() + 260;
-
-    const ctx = slideCtx;
-    const tView = targetView;
-    slideCtx = null;
-    targetView = '';
-    if (!ctx) {
-      ws.classList.remove('is-swiping');
-      return;
-    }
-
-    // Flush latest finger coordinate immediately before starting spring transition
-    const { curEl, nextEl, span } = ctx;
-    const dx = latestX - startX;
-    const threshold = Math.min(76, span * 0.14);
-    const sameDirFlick = (dx < -16 && vx < -0.28) || (dx > 16 && vx > 0.28);
-    const shouldCommit = !cancelled && tView && (Math.abs(dx) > threshold || sameDirFlick);
-
-    _swipeAnimating = true;
-    ws.classList.remove('is-swiping');
-    ws.classList.add('is-animating');
-
-    if (shouldCommit) {
-      const dir = dx <= 0 ? 1 : -1;
-      const remDist = Math.max(0, span - Math.abs(dx));
-      const speed = Math.max(0.55, Math.min(2.6, Math.abs(vx)));
-      const dur = Math.round(Math.max(175, Math.min(285, (remDist / speed) * 0.72)));
-
-      curEl.style.transition = `transform ${dur}ms ${IOS_SPRING_EASE}`;
-      nextEl.style.transition = `transform ${dur}ms ${IOS_SPRING_EASE}`;
-      curEl.style.transform = `translate3d(${-dir * span}px, 0, 0)`;
-      nextEl.style.transform = 'translate3d(0px, 0, 0)';
-      setNavGliderProgress(tView === 'works' ? 1 : 0, dur);
-
-      waitTransformFinish(nextEl, dur, () => {
-        ws.classList.remove('is-animating');
-        selectView(tView);
-        _swipeAnimating = false;
-      });
-      return;
-    }
-
-    const dir = previewDir;
-    const dur = 215;
-    curEl.style.transition = `transform ${dur}ms ${IOS_SPRING_EASE}`;
-    nextEl.style.transition = `transform ${dur}ms ${IOS_SPRING_EASE}`;
-    curEl.style.transform = 'translate3d(0px, 0, 0)';
-    nextEl.style.transform = `translate3d(${dir * span}px, 0, 0)`;
-    setNavGliderProgress(currentView === 'works' ? 1 : 0, dur);
-
-    waitTransformFinish(nextEl, dur, () => {
-      ws.classList.remove('is-animating');
-      selectView(currentView, true);
-      _swipeAnimating = false;
-    });
-  }
-
-  document.addEventListener('touchstart', (e) => {
-    if (e.touches.length !== 1) { if (tracking) endTrack(true); return; }
-    const t = e.touches[0];
-    beginTrack(t.clientX, t.clientY, e.target, true);
-  }, { passive: true });
-
-  document.addEventListener('touchmove', (e) => {
-    if (!tracking || e.touches.length !== 1) return;
-    const t = e.touches[0];
-    updateTrack(t.clientX, t.clientY, e);
-  }, { passive: false });
-
-  document.addEventListener('touchend', () => endTrack(false), { passive: true });
-  document.addEventListener('touchcancel', () => endTrack(true), { passive: true });
-
-  document.addEventListener('mousedown', (e) => {
-    if (e.button !== 0) return;
-    beginTrack(e.clientX, e.clientY, e.target, false);
-  });
-
-  window.addEventListener('mousemove', (e) => {
-    if (!tracking || isTouch) return;
-    if ((e.buttons & 1) === 0) { endTrack(false); return; }
-    updateTrack(e.clientX, e.clientY, e);
-  });
-
-  window.addEventListener('mouseup', () => {
-    if (!isTouch) endTrack(false);
-  });
-
-  function hasHorizontalScrollableAncestor(target, deltaX) {
-    let node = target instanceof Element ? target : null;
-    while (node && node !== document.body && node !== document.documentElement) {
-      if (node.scrollWidth > node.clientWidth + 4) {
-        const ox = getComputedStyle(node).overflowX;
-        if (ox === 'auto' || ox === 'scroll') {
-          if (deltaX > 0 && node.scrollLeft + node.clientWidth < node.scrollWidth - 2) return true;
-          if (deltaX < 0 && node.scrollLeft > 2) return true;
-        }
-      }
-      node = node.parentElement;
-    }
-    return false;
-  }
-
-  let wheelAccX = 0;
-  let wheelResetTimer = null;
-  let wheelLockUntil = 0;
-
-  window.addEventListener('wheel', (e) => {
-    if (e.ctrlKey || _swipeAnimating) return;
-    if (document.querySelector('dialog[open]')) return;
-    if (document.getElementById('lightbox')?.classList.contains('open')) return;
-    if (_randomPickerOpen || activeZSelect) return;
-    if (document.getElementById('warmupPicker')?.classList.contains('open')) return;
-    if (document.getElementById('accountPicker')?.classList.contains('open')) return;
-    if (hasHorizontalScrollableAncestor(e.target, e.deltaX)) return;
-    const absX = Math.abs(e.deltaX);
-    const absY = Math.abs(e.deltaY);
-    if (absX < 6 || absX <= absY * 1.35) return;
-
-    if (e.cancelable) e.preventDefault();
-
-    const now = Date.now();
-    if (now < wheelLockUntil) return;
-
-    wheelAccX += e.deltaX;
-    clearTimeout(wheelResetTimer);
-    wheelResetTimer = setTimeout(() => { wheelAccX = 0; }, 220);
-
-    if (Math.abs(wheelAccX) > 64) {
-      const dir = wheelAccX > 0 ? 1 : -1;
-      const otherView = currentView === 'works' ? 'creation' : 'works';
-      wheelAccX = 0;
-      wheelLockUntil = now + 520;
-      animateViewSwipeTo(otherView, dir);
-    }
-  }, { passive: false });
-})();
 
 /* 面板真实交互自动续期并升级闲置窗口至 60 分钟（实例未运行时后端自动忽略） */
 let _lastPanelTouchTs = 0;
@@ -4934,20 +5103,10 @@ function notifyPanelUserActivity(e) {
 document.addEventListener('pointerdown', notifyPanelUserActivity, { passive: true });
 document.addEventListener('keydown', notifyPanelUserActivity, { passive: true });
 
-function selectModule(mod) {
-  if (mod === 'edit') { toast('改图暂未启用'); return; }
-  if (mod === 'works') { selectView('works'); return; }
-  if (!VALID_CREATION_MODS.includes(mod)) return;
-
+function applyCreationModuleUI(mod) {
+  if (!VALID_CREATION_MODS.includes(mod)) mod = 'image';
   currentMod = mod;
   document.getElementById('creationBody')?.setAttribute('data-mod', mod);
-  selectView('creation');
-
-  document.querySelectorAll('#modSwitcher .seg-btn').forEach(b => {
-    const isAct = b.dataset.mod === mod;
-    b.classList.toggle('active', isAct);
-    b.setAttribute('aria-pressed', isAct ? 'true' : 'false');
-  });
 
   document.getElementById('modSecImage').classList.toggle('active', mod === 'image');
   document.getElementById('modSecEdit').classList.toggle('active', mod === 'edit');
@@ -4977,7 +5136,13 @@ function selectModule(mod) {
     if (cb) cb.scrollTop = cb.scrollHeight;
   }
   updatePromptCharCount();
-  if (!_restoringUiState) savePanelUiState();
+}
+
+function selectModule(mod) {
+  if (mod === 'edit') { toast('改图暂未启用'); return; }
+  if (mod === 'works') { navigateTo('works'); return; }
+  if (!VALID_CREATION_MODS.includes(mod)) return;
+  navigateTo(mod);
 }
 
 function setSeg(key, val) {
@@ -5567,12 +5732,51 @@ function powerBusyTask() {
   return ['stop', 'start'].map(mod => powerTasks[mod]).find(task => task.submitting || task.pending);
 }
 
+let _lastWarmupAnchorEl = null;
+
+function positionFixedPopover(box, anchorEl, maxW = 392) {
+  if (!box) return;
+  const vw = window.innerWidth || 1280;
+  const vh = window.innerHeight || 800;
+  const w = Math.min(maxW, vw - 20);
+  box.style.width = `${w}px`;
+  const r = anchorEl && anchorEl.offsetParent !== null ? anchorEl.getBoundingClientRect() : null;
+  if (!r) {
+    box.style.left = `${Math.round((vw - w) / 2)}px`;
+    box.style.top = '72px';
+    box.style.bottom = 'auto';
+    box.style.transformOrigin = 'top center';
+    return;
+  }
+  let left = r.right - w;
+  if (left < 10) left = Math.max(10, Math.min(r.left, vw - w - 10));
+  if (left + w > vw - 10) left = Math.max(10, vw - w - 10);
+  box.style.left = `${Math.round(left)}px`;
+  const h = box.offsetHeight || 220;
+  const top = Math.round(r.bottom + 8);
+  if (top + h <= vh - 16 || r.top < vh * 0.5) {
+    box.style.bottom = 'auto';
+    box.style.top = `${top}px`;
+    box.style.transformOrigin = 'top right';
+  } else {
+    box.style.top = 'auto';
+    box.style.bottom = `${Math.round(vh - r.top + 8)}px`;
+    box.style.transformOrigin = 'bottom right';
+  }
+}
+
+function positionWarmupPicker(anchorEl) {
+  const box = document.getElementById('warmupPicker');
+  const anc = anchorEl || _lastWarmupAnchorEl || document.getElementById('warmupG4Btn');
+  positionFixedPopover(box, anc, 384);
+}
+
 function syncRefreshStatusButton() {
   const refreshBtn = document.getElementById('refreshStatusBtn');
   if (refreshBtn) {
     refreshBtn.disabled = statusLoading;
+    refreshBtn.classList.toggle('is-spinning', statusLoading);
     refreshBtn.setAttribute('aria-busy', statusLoading ? 'true' : 'false');
-    setControlText(refreshBtn, statusLoading ? '刷新中' : '刷新', 'i-refresh', 'ico ico-14 ico-blue');
   }
   const g4 = document.getElementById('g4Badge');
   if (g4) g4.setAttribute('aria-busy', statusLoading ? 'true' : 'false');
@@ -5581,36 +5785,38 @@ function syncRefreshStatusButton() {
 function syncPowerButton(mod) {
   syncRefreshStatusButton();
   const task = powerTasks[mod];
-  const btn = document.getElementById(task.buttonId);
-  if (!btn) return;
   if (mod === 'warmup') {
     const busy = task.submitting || task.pending;
-    btn.disabled = busy || !!powerBusyTask() || statusLoading || !powerJobsKnown || instanceActive !== true;
-    btn.setAttribute('aria-busy', busy ? 'true' : 'false');
-    btn.setAttribute('aria-label', busy ? task.ariaBusy : task.ariaIdle);
-    setControlText(btn, busy ? task.busyText : task.name, 'i-bolt', 'ico ico-14 ico-orange');
+    document.querySelectorAll('[data-power-btn="warmup"]').forEach(btn => {
+      btn.disabled = busy || !!powerBusyTask() || statusLoading || !powerJobsKnown || instanceActive !== true;
+      btn.setAttribute('aria-busy', busy ? 'true' : 'false');
+      btn.setAttribute('aria-label', busy ? task.ariaBusy : task.ariaIdle);
+      setControlText(btn, busy ? task.busyText : task.name, 'i-bolt', 'ico ico-14 ico-orange');
+    });
     syncWarmupPicker();
     return;
   }
   const busyTask = powerBusyTask();
   const busy = !!busyTask || statusLoading;
   const known = powerJobsKnown && (instanceActive === true || instanceActive === false);
-  btn.disabled = busy || !known;
-  btn.setAttribute('aria-busy', busy ? 'true' : 'false');
   const isDanger = busyTask === powerTasks.stop || (!busyTask && !statusLoading && known && instanceActive);
-  btn.classList.toggle('btn-danger', isDanger);
   const icoCls = isDanger ? 'ico ico-14 ico-red' : 'ico ico-14 ico-green';
-  if (busyTask) {
-    setControlText(btn, busyTask.busyText, 'i-power', icoCls);
-    btn.setAttribute('aria-label', busyTask.ariaBusy);
-  } else if (statusLoading || !known) {
-    setControlText(btn, statusLoading ? '检查中' : '未知', 'i-power', 'ico ico-14');
-    btn.setAttribute('aria-label', '实例状态未确认，电源按钮已禁用');
-  } else {
-    const action = instanceActive ? powerTasks.stop : powerTasks.start;
-    setControlText(btn, action.name, 'i-power', icoCls);
-    btn.setAttribute('aria-label', action.ariaIdle);
-  }
+  document.querySelectorAll('[data-power-btn="start"]').forEach(btn => {
+    btn.disabled = busy || !known;
+    btn.setAttribute('aria-busy', busy ? 'true' : 'false');
+    btn.classList.toggle('btn-danger', isDanger);
+    if (busyTask) {
+      setControlText(btn, busyTask.busyText, 'i-power', icoCls);
+      btn.setAttribute('aria-label', busyTask.ariaBusy);
+    } else if (statusLoading || !known) {
+      setControlText(btn, statusLoading ? '检查中' : '未知', 'i-power', 'ico ico-14');
+      btn.setAttribute('aria-label', '实例状态未确认，电源按钮已禁用');
+    } else {
+      const action = instanceActive ? powerTasks.stop : powerTasks.start;
+      setControlText(btn, action.name, 'i-power', icoCls);
+      btn.setAttribute('aria-label', action.ariaIdle);
+    }
+  });
   syncPowerButton('warmup');
 }
 
@@ -5618,7 +5824,7 @@ async function toggleG4Power() {
   if (powerBusyTask() || statusLoading) return;
   if (!powerJobsKnown || (instanceActive !== true && instanceActive !== false)) return;
   if (instanceActive) {
-    confirmAction('确认关闭 Colab G4 实例？', '关闭远端 GPU 实例；正在运行和排队的任务将自动暂停保全，下次开机后可手动继续。', () => submitPowerTask('stop'), '确认关机');
+    confirmAction('确认关闭 Colab 实例？', '关闭远端 GPU 实例；正在运行和排队的任务将自动暂停保全，下次开机后可手动继续。', () => submitPowerTask('stop'), '确认关机');
     return;
   }
   return submitPowerTask('start');
@@ -5632,24 +5838,26 @@ function syncWarmupPicker() {
   document.getElementById('startWarmupBtn').disabled = busy || !warmupTargets.length;
   document.getElementById('warmupHint').textContent = !warmupTargets.length ? '请至少选择一项' : (instanceActive !== true ? '请先开机' : '');
 }
-function setWarmupPickerOpen(open, restoreFocus = false) {
+function setWarmupPickerOpen(open, restoreFocus = false, anchorEl = null) {
   const box = document.getElementById('warmupPicker');
-  const btn = document.getElementById('warmupG4Btn');
-  if (!box || !btn) return;
+  if (!box) return;
+  if (open) {
+    _lastWarmupAnchorEl = anchorEl || _lastWarmupAnchorEl;
+    setAccountPickerOpen(false);
+    positionWarmupPicker(_lastWarmupAnchorEl);
+  }
   box.classList.toggle('open', open);
   box.setAttribute('aria-hidden', open ? 'false' : 'true');
   if ('inert' in box) box.inert = !open;
-  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-
+  document.querySelectorAll('[data-power-btn="warmup"]').forEach(b => b.setAttribute('aria-expanded', open ? 'true' : 'false'));
 }
 function closeWarmupPicker(restoreFocus = true) { setWarmupPickerOpen(false, restoreFocus); }
-function warmupAll() {
+function warmupAll(triggerBtn) {
   if (instanceActive === false) { toast('请先开机；预热不会自动创建实例'); return; }
   if (instanceActive !== true || powerBusyTask() || !powerJobsKnown || statusLoading) return;
-  setAccountPickerOpen(false);
   const box = document.getElementById('warmupPicker');
   const nextOpen = !box.classList.contains('open');
-  setWarmupPickerOpen(nextOpen, false);
+  setWarmupPickerOpen(nextOpen, false, triggerBtn || null);
   if (nextOpen) syncWarmupPicker();
 }
 
@@ -5659,22 +5867,7 @@ let accountLoading = false;
 let currentOauthUrl = '';
 
 function alignAccountPickerToBadge() {
-  const box = document.getElementById('accountPicker');
-  const anchor = box?.parentElement;
-  if (!box || !anchor) return;
-  box.style.left = 'auto';
-  box.style.right = '0px';
-  const aRect = anchor.getBoundingClientRect();
-  const vw = document.documentElement.clientWidth || window.innerWidth || 390;
-  const w = Math.min(392, vw - 20);
-  const idealLeft = aRect.right - w;
-  if (idealLeft < 10) {
-    box.style.right = 'auto';
-    box.style.left = `${Math.round(10 - aRect.left)}px`;
-  } else if (aRect.right > vw - 10) {
-    box.style.left = 'auto';
-    box.style.right = `${Math.round(aRect.right - (vw - 10))}px`;
-  }
+  positionFixedPopover(document.getElementById('accountPicker'), document.getElementById('cuBadge'), 396);
 }
 
 function setAccountPickerOpen(open) {
@@ -6264,7 +6457,18 @@ async function pollJob() {
     if (cancelBtn) cancelBtn.disabled = !st.running;
     const qCnt = st.queued_count || 0;
     const aCnt = st.active_count || 0;
-    syncNavRunningDots(!!(st.running || aCnt > 0 || qCnt > 0));
+    const isTaskActive = !!(st.running || aCnt > 0 || qCnt > 0);
+    const pillProg = st.progress || {};
+    const pillPct = (typeof pillProg.percent === 'number' && Number.isFinite(pillProg.percent))
+      ? Math.max(0, Math.min(99, Math.round(pillProg.percent))) : null;
+    let pillTxt = '任务队列';
+    if (isTaskActive) {
+      if (pillPct !== null) pillTxt = `运行 ${aCnt} · ${pillPct}%` + (qCnt > 0 ? ` (+${qCnt})` : '');
+      else pillTxt = `运行 ${aCnt}` + (qCnt > 0 ? ` · 排队 ${qCnt}` : ' · 执行中');
+    } else if (totalHistoryTasksCount > 0) {
+      pillTxt = `任务队列 (${totalHistoryTasksCount})`;
+    }
+    syncNavRunningDots(isTaskActive, pillTxt);
     const pCnt = st.paused_count || 0;
     totalHistoryTasksCount = typeof st.total_history_count === 'number' ? st.total_history_count : 0;
     deletableTasksCount = typeof st.deletable_count === 'number' ? st.deletable_count : 0;
@@ -7946,21 +8150,15 @@ async function loadStudioSettings() {
   return null;
 }
 
-async function openSettingsDialog() {
-  closeWarmupPicker(false);
-  const dlg = document.getElementById('settingsDialog');
-  if (!dlg) return;
-  const latest = await loadStudioSettings();
+async function ensureSettingsPagePopulated(forceFetch = false) {
+  const latest = (forceFetch || !studioSettings) ? await loadStudioSettings() : studioSettings;
   populateSettingsForm(latest || studioSettings || studioDefaults);
-  if (!dlg.open) dlg.showModal();
 }
-
-function closeSettingsDialog() {
-  closeStudioSelect(false);
-  const dlg = document.getElementById('settingsDialog');
-  if (dlg && dlg.open) dlg.close();
+async function openSettingsDialog() {
+  navigateTo('settings');
+  await ensureSettingsPagePopulated(true);
 }
-
+function closeSettingsDialog() { closeZenoSelect(false); }
 async function saveStudioSettings() {
   if (settingsSaving) return;
   const saveBtn = document.getElementById('saveSettingsBtn');
@@ -7978,7 +8176,6 @@ async function saveStudioSettings() {
     studioSettings = data.settings;
     populateSettingsForm(studioSettings);
     applyStudioSettingsToMainUI(studioSettings);
-    closeSettingsDialog();
     toast(data.message || '参数与提示词已保存，立即生效');
   } catch (e) {
     toast(e.message || '保存失败');
@@ -8013,23 +8210,7 @@ function requestResetSettings(section) {
   }, '确认恢复');
 }
 
-(function initSettingsDialogEvents() {
-  const dlg = document.getElementById('settingsDialog');
-  const shell = document.getElementById('settingsShell');
-  if (!dlg || !shell) return;
-  let downOutside = false;
-  dlg.addEventListener('pointerdown', (e) => {
-    const r = shell.getBoundingClientRect();
-    downOutside = e.target === dlg && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom);
-  });
-  dlg.addEventListener('click', (e) => {
-    if (!downOutside || e.target !== dlg) { downOutside = false; return; }
-    const r = shell.getBoundingClientRect();
-    if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) {
-      closeSettingsDialog();
-    }
-    downOutside = false;
-  });
+(function initSettingsFormEvents() {
   ['cfgWfEnableHires', 'cfgTier_tier1_s1', 'cfgTier_tier1_ref', 'cfgTier_tier2_s1', 'cfgTier_tier2_ref', 'cfgTier_tier3_s1', 'cfgTier_tier3_ref'].forEach(id => {
     const node = document.getElementById(id);
     if (node) {
@@ -8038,7 +8219,6 @@ function requestResetSettings(section) {
     }
   });
 })();
-
 
 /* ==================== 自绘浮层下拉框控制器（零原生 OS 下拉菜单、兼容 Top-Layer 弹窗） ==================== */
 const zSelectRegistry = new Map();
@@ -8418,12 +8598,20 @@ window.addEventListener('keydown', (e) => {
     closeAllDriveSyncPickers();
     return;
   }
+  if (e.key === 'Escape' && taskDrawerOpen) { e.preventDefault(); setTaskDrawerOpen(false); return; }
   const wp = document.getElementById('warmupPicker');
   if (e.key === 'Escape' && wp && wp.classList.contains('open')) {
     e.preventDefault();
     closeWarmupPicker(true);
   }
 });
+
+document.addEventListener('pointerdown', (e) => {
+  const wp = document.getElementById('warmupPicker');
+  if (wp && wp.classList.contains('open') && !wp.contains(e.target) && !e.target.closest('[data-power-btn="warmup"]')) closeWarmupPicker(false);
+  const ap = document.getElementById('accountPicker');
+  if (ap && ap.classList.contains('open') && !ap.contains(e.target) && !e.target.closest('#cuBadge')) setAccountPickerOpen(false);
+}, { passive: true });
 
 document.addEventListener('keydown', (e) => {
   const control = e.target.closest('[role="button"][data-action]');
@@ -8440,27 +8628,48 @@ document.addEventListener('click', async (e) => {
 
   switch (action) {
     case 'brand-home':
-      if (currentView !== 'creation') selectView('creation');
-      selectModule('image');
+      navigateTo('image', { scrollTop: true });
       break;
-
+    case 'nav-page':
+      navigateTo(target.dataset.page || 'image');
+      break;
+    case 'toggle-task-panel':
+      toggleTaskPanel();
+      break;
+    case 'close-task-drawer':
+      setTaskDrawerOpen(false);
+      break;
+    case 'toggle-mob-top-card':
+      applyMobTopCardFolded(!mobTopCardFolded, true);
+      break;
+    case 'reload-settings-form':
+      ensureSettingsPagePopulated(true).then(() => toast('已重新加载已保存的参数'));
+      break;
+    case 'logout-panel':
+      confirmAction('确认退出登录？', '将清除当前登录状态并立即吊销旧会话凭证。', async () => {
+        try {
+          await fetch('/api/logout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: '{}'
+          });
+        } catch (_) {}
+        window.location.replace('/');
+      }, '确认退出');
+      break;
     case 'select-view': {
       const v = target.dataset.view;
-      if (v && v !== currentView) {
-        animateViewSwipeTo(v);
-      } else if (target.closest('#mobPageDots')) {
-        animateViewSwipeTo(currentView === 'works' ? 'creation' : 'works');
-      }
+      if (v && v !== currentView) selectView(v);
       break;
     }
     case 'mob-nav-toggle':
       animateViewSwipeTo(currentView === 'works' ? 'creation' : 'works');
       break;
     case 'toggle-mob-topbar':
-      applyMobTopbarCollapsed(!mobTopCollapsed, true);
+      applyMobTopCardFolded(!mobTopCardFolded, true);
       break;
     case 'toggle-mob-works-bar':
-      applyMobWorksCollapsed(!mobWorksCollapsed, true);
+      break;
       break;
     case 'toggle-view':
       selectView(currentView === 'works' ? 'creation' : 'works');
@@ -8569,7 +8778,7 @@ document.addEventListener('click', async (e) => {
       submitPowerTask('warmup');
       break;
     case 'warmup-all':
-      warmupAll();
+      warmupAll(target);
       break;
     case 'open-settings':
       openSettingsDialog();
@@ -8608,7 +8817,7 @@ document.addEventListener('click', async (e) => {
       switchTab(target.dataset.tab);
       break;
     case 'scroll-top':
-      window.scrollTo({ top: 0, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+      setMainScrollY(0, true);
       break;
     case 'goto-page': {
       const p = Number(target.dataset.page);
@@ -8618,10 +8827,11 @@ document.addEventListener('click', async (e) => {
         renderGallery(true);
         if (fromBottom) {
           const wb = document.getElementById('worksBody');
-          const topY = (currentView === 'creation' && wb)
-            ? Math.max(0, Math.round(wb.getBoundingClientRect().top + (window.scrollY || 0) - 12))
+          const cEl = isMobileScrollShell() ? document.getElementById('appContent') : null;
+          const topY = wb
+            ? Math.max(0, Math.round(wb.getBoundingClientRect().top - (cEl ? cEl.getBoundingClientRect().top : 0) + getMainScrollY() - 10))
             : 0;
-          window.scrollTo({ top: topY, behavior: 'smooth' });
+          setMainScrollY(topY, true);
         }
         savePanelUiState();
       }
@@ -8808,12 +9018,13 @@ function savePanelUiState(extra = null) {
   if (_restoringUiState) return;
   try {
     const payload = {
+      page: currentPage,
       view: currentView,
       mod: currentMod,
       tab: currentTab,
       page: galleryPage,
       search: gallerySearchQuery,
-      scrollY: Math.max(0, Math.round(window.scrollY || 0)),
+      scrollY: Math.round(getMainScrollY()),
       segs: {
         imgRes: state.imgRes,
         imgSteps: state.imgSteps,
@@ -8845,7 +9056,7 @@ function reloadPanelKeepPlace(btnEl) {
   const topRefreshBtn = document.getElementById('refreshStatusBtn');
   if (topRefreshBtn) {
     topRefreshBtn.disabled = true;
-    setControlText(topRefreshBtn, '刷新中', 'i-refresh', 'ico ico-14 ico-blue');
+    topRefreshBtn.classList.add('is-spinning');
   }
   window.location.reload();
 }
@@ -8915,8 +9126,12 @@ let _forceStatusOnBoot = false;
     if (Number.isInteger(saved.page) && saved.page >= 1) {
       galleryPage = saved.page;
     }
-    if (saved.view === 'works' || saved.view === 'creation') {
-      selectView(saved.view, true);
+    if (saved.page && VALID_PAGES.includes(saved.page)) {
+      navigateTo(saved.page, { initialRestore: true });
+    } else if (saved.view === 'works') {
+      navigateTo('works', { initialRestore: true });
+    } else if (saved.mod && VALID_CREATION_MODS.includes(saved.mod)) {
+      navigateTo(saved.mod, { initialRestore: true });
     }
     if (typeof saved.scrollY === 'number' && saved.scrollY > 0) {
       _pendingRestoreScrollY = saved.scrollY;
@@ -8927,7 +9142,7 @@ let _forceStatusOnBoot = false;
   savePanelUiState({ forceStatus: false });
   updatePromptCharCount();
 })();
-selectView(currentView, true);
+navigateTo(currentPage, { initialRestore: true });
 updatePromptCharCount();
 
 function applyPendingScrollRestore() {
@@ -8935,12 +9150,12 @@ function applyPendingScrollRestore() {
   const targetY = _pendingRestoreScrollY;
   _pendingRestoreScrollY = null;
   requestAnimationFrame(() => {
-    window.scrollTo(0, targetY);
+    setMainScrollY(targetY, false);
     syncBackToTopVisibility();
   });
 }
 
-loadStudioSettings();
+loadStudioSettings().then(cfg => { if (cfg) populateSettingsForm(cfg); });
 loadChat();
 pollHwMetrics();
 loadDriveSyncStatus(true);

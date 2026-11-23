@@ -696,12 +696,15 @@ def _recover_start_locked(lock, session, gpu):
     if result["status"] != "prepared":
         raise SystemExit("[colab-ai] " + result.get("message", "启动身份核对失败；保留保护。"))
     print(f"[colab-ai] 正在核对/恢复 Colab {gpu} 分配（同一请求身份）...", flush=True)
-    for attempt in range(2):
+    backoff_schedule = (15.0, 15.0, 20.0, 30.0)
+    max_attempts = len(backoff_schedule)
+    for attempt in range(max_attempts):
         _check_generation(session)
         pending = read_pending(lock, session, gpu)
-        delay = min(15.0, max(0.0, pending["last_post_at"] + 15 - time.time()))
+        min_gap = backoff_schedule[attempt]
+        delay = min(min_gap, max(0.0, pending["last_post_at"] + min_gap - time.time())) if pending["last_post_at"] > 0 else 0.0
         if delay:
-            print("[colab-ai] Google 分配尚未确认，正在等待后核对重试（约15秒间隔）...", flush=True)
+            print(f"[colab-ai] Google 分配尚未确认，等待 {int(round(delay))} 秒后核对重试 ({attempt + 1}/{max_attempts})...", flush=True)
             deadline = time.monotonic() + delay
             while time.monotonic() < deadline:
                 _check_generation(session)
@@ -714,7 +717,9 @@ def _recover_start_locked(lock, session, gpu):
         _check_generation(session)
         if result["status"] == "allocated":
             return
-        print("[colab-ai] Google 分配未确认，正在权威核对已有实例；不会另建请求...", flush=True)
+        err_kind = result.get("err_kind") or (f"HTTP {result['http_status']}" if result.get("http_status") else "")
+        err_note = f"（{err_kind}）" if err_kind else ""
+        print(f"[colab-ai] Google 分配未确认{err_note}，正在权威核对已有实例；不会另建请求...", flush=True)
         if _auto_attach_remote_session_locked(session):
             _set_start_pending(lock, False)
             return
@@ -728,11 +733,11 @@ def _recover_start_locked(lock, session, gpu):
             _set_start_pending(lock, False)
             code_hint = f" (HTTP {result['http_status']})" if result.get("http_status") else ""
             raise SystemExit(f"[colab-ai] Google 拒绝了本次分配请求{code_hint}；已核对确认无运行中实例并自动清理启动保护。")
-        if result["status"] != "retryable" or attempt == 1:
+        if result["status"] != "retryable" or attempt == max_attempts - 1:
             message = result.get("message") or (
-                "Google 暂时分配失败；本次有限恢复已结束，请稍后再点开机（或先关机/切号自动核对清理），将继续核对同一请求，不保证分配成功。"
+                f"Google 连续 {max_attempts} 次分配未成功{err_note}（通常为 GPU 节点池拥挤 503）；本次有限恢复已结束，请稍后再试或切换账号。"
                 if result["status"] == "retryable" else
-                "分配被拒绝或响应异常；保留原请求身份，请稍后再点开机核对，不会盲目新建。")
+                f"分配被拒绝或响应异常{err_note}；保留原请求身份，请稍后再点开机核对，不会盲目新建。")
             raise SystemExit("[colab-ai] " + message)
 
 

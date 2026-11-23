@@ -164,7 +164,7 @@ def child(action, fd, session, gpu, generation_path, generation):
         if action != "attempt":
             raise PendingError("未知启动操作。")
         # Backoff applies across later start invocations too. Parent waits cancellably.
-        if time.time() - pending["last_post_at"] < 15:
+        if time.time() - pending["last_post_at"] < 12:
             return {"status": "wait"}
         check_generation(generation_path, generation)
         pending.update(phase="posting", post_count=pending["post_count"] + 1, last_post_at=time.time())
@@ -178,14 +178,16 @@ def child(action, fd, session, gpu, generation_path, generation):
             pending.update(phase="unconfirmed", last_post_at=time.time())
             write_pending(lock, pending)
             status = getattr(getattr(exc, "response", None), "status_code", None)
-            retryable = isinstance(exc, requests.exceptions.Timeout) or (
+            is_timeout = isinstance(exc, requests.exceptions.Timeout)
+            retryable = is_timeout or (
                 isinstance(exc, ColabRequestError) and status is not None and 500 <= status <= 599)
             rejected = isinstance(exc, ColabRequestError) and status is not None and 400 <= status <= 499
+            err_kind = "Timeout" if is_timeout else (f"HTTP {status}" if status is not None else type(exc).__name__)
             if retryable:
-                return {"status": "retryable"}
+                return {"status": "retryable", "http_status": status, "err_kind": err_kind}
             if rejected:
-                return {"status": "rejected", "http_status": status}
-            return {"status": "blocked"}
+                return {"status": "rejected", "http_status": status, "err_kind": err_kind}
+            return {"status": "blocked", "http_status": status, "err_kind": err_kind}
         bind_assignment(session, result, variant, accelerator, shape)
         pending["phase"] = "bound"
         write_pending(lock, pending)

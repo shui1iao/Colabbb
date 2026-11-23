@@ -248,6 +248,9 @@ def main():
             assert request(logged, '/')[1] == override
             (state / 'panel_ui.html').unlink()
             assert request(logged, '/')[1] == (ROOT / 'ui/panel_ui.html').read_bytes()
+            # 5.5 公开 PWA manifest.webmanifest 返回 200 JSON
+            m_st, m_body, m_hdrs = request(anonymous, '/manifest.webmanifest')
+            assert m_st == 200 and json.loads(m_body).get('display') == 'standalone', (m_st, m_body)
             # 6. 登出后服务端递增 session_version，原 Cookie 复制重放立即失效（401）
             saved_cookie = '; '.join(f'{c.name}={c.value}' for c in cookies)
             assert request(logged, '/api/logout', {})[0] == 200
@@ -286,6 +289,20 @@ def main():
                 d2 = g.read()
                 assert d2['attempts'] == 0 and d2['retry_at'] == 0
             print('PASS v0.2.3 colab_startup pending, colab_accounts Drive fail-closed, idle_guard lease reset')
+            # v0.2.4 回归：JobManager llm 等 start 互斥、task_detail 返回 state、新版 5 栏侧栏+顶部状态卡+移动端底栏+退出登录处理
+            import collections as _col, threading as _th
+            jm = panel.JobManager.__new__(panel.JobManager)
+            jm.lock = _th.RLock(); jm.cond = _th.Condition(jm.lock)
+            jm.queues = {'media': _col.deque(), 'llm': _col.deque(), 'sys': _col.deque()}
+            jm.active_procs = {1: {'jid': 1, 'module': 'start', 'cmd_list': [panel.COLAB_AI_BIN, 'start'], 'lane': 'media'}}
+            jm.paused = {}; jm.recent_done = _col.deque(maxlen=10)
+            assert jm._has_start_pending() is True
+            det = jm.get_task_detail(1)
+            assert det['ok'] and det['state'] == 'running', det
+            ui_txt = (ROOT / 'ui/panel_ui.html').read_text(encoding='utf-8')
+            for marker in ('id="appSidebar"', 'id="topStatusCard"', 'id="mobileBottomNav"', 'id="mobNavGlider"', "case 'logout-panel':", 'pwa-standalone'):
+                assert marker in ui_txt, f'missing v0.2.4 UI marker: {marker}'
+            print('PASS v0.2.4 llm-waits-start, task_detail state, manifest.webmanifest & sidebar/mobile-card UI contract')
     print('ALL SMOKE TESTS PASSED')
 
 
