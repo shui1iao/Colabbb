@@ -304,7 +304,9 @@ def main():
                 'id="appSidebar"', 'id="topStatusCard"', 'id="mobileBottomNav"', 'id="mobNavGlider"',
                 "case 'logout-panel':", 'pwa-standalone',
                 'id="worksGalleryScroll"', 'container: works-card / inline-size;', 'container: settings-card / inline-size;',
-                'const docked = !isMobileScrollShell();', 'navPage: currentPage,', 'function getDesktopScrollEl('
+                'const docked = !isMobileScrollShell();', 'navPage: currentPage,', 'function getDesktopScrollEl(',
+                'minmax(160px, 1fr) max-content', '@container works-card (max-width: 1080px)',
+                'width: 152px;', 'let _lastTaskRunningFlag = false;'
             ):
                 assert marker in ui_txt, f'missing UI marker: {marker}'
             import hashlib as _hl, re as _re
@@ -313,7 +315,8 @@ def main():
             _sha = base64.b64encode(_hl.sha256(_sm.group(1).encode('utf-8')).digest()).decode('ascii')
             assert f"script-src 'sha256-{_sha}'" in ui_txt, f'CSP script-src sha256 mismatch: expected {_sha}'
             assert ui_txt == panel.HTML_PAGE, 'ui/panel_ui.html out of sync with web_panel.HTML_PAGE'
-            print('PASS v0.2.6 unified fixed dual-column layout, CSP SHA-256 exact match & UI/backend contract')
+            assert '_fatal_conn_err' in (ROOT / 'colab-ai').read_text(encoding='utf-8')
+            print('PASS v0.2.7 unified layout, fixed top-bar widths, works search min-width, exec hang guard & CSP SHA-256')
     print('ALL SMOKE TESTS PASSED')
 
 

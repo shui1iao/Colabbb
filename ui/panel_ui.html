@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-XvCQtZHpkxkT6Jw5e8SqKwpU6WDZCguGWk8eSR8tv8k='; style-src 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; form-action 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; media-src 'self'; font-src 'none'; worker-src 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-Evdend8CnX+TOX2islbcCdEaefo11xYtxX0Oy72zavw='; style-src 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; form-action 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; media-src 'self'; font-src 'none'; worker-src 'none'">
   <meta name="color-scheme" content="light dark">
   <meta name="theme-color" id="metaThemeColor" content="#EEF1F6">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1165,6 +1165,36 @@
       flex: 0 0 auto;
       flex-wrap: nowrap;
     }
+    .top-compute-group {
+      flex-wrap: nowrap;
+    }
+    #g4Badge {
+      width: 118px;
+      justify-content: center;
+      overflow: hidden;
+    }
+    #cuBadge {
+      width: 176px;
+      justify-content: center;
+      overflow: hidden;
+    }
+    #startG4Btn,
+    #warmupG4Btn {
+      width: 76px;
+      padding: 0 8px;
+      justify-content: center;
+    }
+    #globalStopMiniBtn {
+      width: 48px;
+      padding: 0 6px;
+      justify-content: center;
+    }
+    #globalTaskPill {
+      width: 152px;
+      max-width: 152px;
+      padding: 0 10px;
+      justify-content: center;
+    }
     .app-stage {
       flex: 1 1 0;
       min-height: 0;
@@ -2291,10 +2321,22 @@
     font-size: 12.5px;
   }
   .works-filter-group {
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(160px, 1fr) max-content;
     align-items: center;
     gap: 6px;
-    flex-wrap: wrap;
+    min-width: 0;
+  }
+  .works-filter-group > .search-wrap {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+  }
+  .works-actions-inline {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    gap: 6px;
     min-width: 0;
   }
   #toggleBatchBtn { min-width: 88px; justify-content: center; }
@@ -3497,6 +3539,11 @@
       --shell-gap: 12px;
     }
     .top-status-card { padding: 11px 14px; }
+    #g4Badge { width: 104px; padding: 0 8px; }
+    #cuBadge { width: 148px; padding: 0 8px; }
+    #startG4Btn, #warmupG4Btn { width: 70px; padding: 0 6px; }
+    #globalStopMiniBtn { width: 44px; padding: 0 5px; }
+    #globalTaskPill { width: 136px; max-width: 136px; padding: 0 8px; }
   }
 
   /* Tablet & Mobile (<= 1024px): Locked 100% App-Shell + Internal Scroll (Zero Safari Fixed Bottom Mask / Auto-Lift) */
@@ -3541,6 +3588,7 @@
       display: contents;
     }
     .global-task-group { order: 2; }
+    .global-task-pill { width: 136px; max-width: 136px; justify-content: center; }
     .mob-fold-top-btn { order: 3; }
     .top-compute-group {
       order: 4;
@@ -3636,7 +3684,7 @@
 
   @media (max-width: 680px) {
     .page-header-title { font-size: 14.5px; }
-    .global-task-pill { height: 30px; padding: 0 9px; font-size: 11.5px; max-width: 146px; }
+    .global-task-pill { height: 30px; width: 122px; max-width: 122px; padding: 0 8px; font-size: 11.5px; justify-content: center; }
     #globalStopMiniBtn { height: 30px; padding: 0 8px; font-size: 11.5px; }
     .card { padding: 13px 12px; gap: 10px; }
     .desk-only { display: none; }
@@ -3734,13 +3782,22 @@
   @container works-card (max-width: 1020px) {
     .gallery-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   }
-  @container works-card (max-width: 920px) {
+  @container works-card (max-width: 1080px) {
     .works-toolbar { grid-template-columns: minmax(0, 1fr); gap: 9px; }
     .works-head-left { width: 100%; }
   }
   @container works-card (max-width: 660px) {
     .gallery-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
     .gallery-grid.single-col { grid-template-columns: minmax(0, 1fr); }
+  }
+  @container works-card (max-width: 560px) {
+    .works-filter-group { display: flex; flex-direction: column; align-items: stretch; gap: 7px; }
+    .works-filter-group > .search-wrap { width: 100%; }
+    .works-actions-inline { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; width: 100%; }
+    .works-actions-inline > .drive-sync-anchor,
+    .works-actions-inline > .drive-sync-anchor > .btn,
+    .works-actions-inline .btn { width: 100%; min-width: 0; justify-content: center; }
+    .works-actions-inline #toggleBatchBtn { min-width: 0; }
   }
   @container works-card (max-width: 359px) {
     .gallery-grid { grid-template-columns: minmax(0, 1fr); }
@@ -3915,7 +3972,7 @@
           <span class="hdr-sep" aria-hidden="true"></span>
 
           <div class="global-task-group">
-            <button type="button" id="globalStopMiniBtn" class="btn btn-xs btn-danger" data-action="cancel-job" hidden title="中止当前运行任务">
+            <button type="button" id="globalStopMiniBtn" class="btn btn-xs btn-danger" data-action="cancel-job" disabled title="中止当前运行任务">
               <span class="control-label">中止</span>
             </button>
             <button type="button" id="globalTaskPill" class="global-task-pill is-panel-open" data-action="toggle-task-panel" aria-expanded="true" aria-controls="taskPanelWrap" title="展开或收起实时任务队列与日志">
@@ -5056,12 +5113,22 @@ function setMainScrollY(y, smooth = false, page = currentPage) {
   }
 }
 
+let _lastTaskRunningFlag = false;
 function syncNavRunningDots(isRunning, badgeText = '') {
+  _lastTaskRunningFlag = !!isRunning;
   document.querySelectorAll('.nav-run-dot').forEach(dot => { dot.hidden = !isRunning; });
   const pill = document.getElementById('globalTaskPill');
   if (pill) pill.classList.toggle('is-running', !!isRunning);
   const stopMini = document.getElementById('globalStopMiniBtn');
-  if (stopMini) stopMini.hidden = !isRunning;
+  if (stopMini) {
+    if (isMobileScrollShell()) {
+      stopMini.hidden = !isRunning;
+      stopMini.disabled = !isRunning;
+    } else {
+      stopMini.hidden = false;
+      stopMini.disabled = !isRunning;
+    }
+  }
   const txtEl = document.getElementById('globalTaskPillText');
   if (txtEl && badgeText) txtEl.textContent = badgeText;
 }
@@ -5081,6 +5148,11 @@ function syncTaskPanelLayout() {
   if (backdrop) {
     backdrop.classList.toggle('open', isDrawerVis);
     backdrop.setAttribute('aria-hidden', isDrawerVis ? 'false' : 'true');
+  }
+  const stopMini = document.getElementById('globalStopMiniBtn');
+  if (stopMini) {
+    stopMini.hidden = docked ? false : !_lastTaskRunningFlag;
+    stopMini.disabled = !_lastTaskRunningFlag;
   }
   if (pill) {
     const expanded = docked ? !taskPanelCollapsed : isDrawerVis;
@@ -6585,6 +6657,9 @@ async function pollJob() {
     const aCnt = st.active_count || 0;
     const isTaskActive = !!(st.running || aCnt > 0 || qCnt > 0);
     const pillProg = st.progress || {};
+    const pCnt = st.paused_count || 0;
+    totalHistoryTasksCount = typeof st.total_history_count === 'number' ? st.total_history_count : 0;
+    deletableTasksCount = typeof st.deletable_count === 'number' ? st.deletable_count : 0;
     const pillPct = (typeof pillProg.percent === 'number' && Number.isFinite(pillProg.percent))
       ? Math.max(0, Math.min(99, Math.round(pillProg.percent))) : null;
     let pillTxt = '任务队列';
@@ -6595,9 +6670,6 @@ async function pollJob() {
       pillTxt = `任务队列 (${totalHistoryTasksCount})`;
     }
     syncNavRunningDots(isTaskActive, pillTxt);
-    const pCnt = st.paused_count || 0;
-    totalHistoryTasksCount = typeof st.total_history_count === 'number' ? st.total_history_count : 0;
-    deletableTasksCount = typeof st.deletable_count === 'number' ? st.deletable_count : 0;
 
     if (timer) {
       if (st.running) {
