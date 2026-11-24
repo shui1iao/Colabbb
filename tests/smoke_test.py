@@ -300,9 +300,20 @@ def main():
             det = jm.get_task_detail(1)
             assert det['ok'] and det['state'] == 'running', det
             ui_txt = (ROOT / 'ui/panel_ui.html').read_text(encoding='utf-8')
-            for marker in ('id="appSidebar"', 'id="topStatusCard"', 'id="mobileBottomNav"', 'id="mobNavGlider"', "case 'logout-panel':", 'pwa-standalone'):
-                assert marker in ui_txt, f'missing v0.2.4 UI marker: {marker}'
-            print('PASS v0.2.4 llm-waits-start, task_detail state, manifest.webmanifest & sidebar/mobile-card UI contract')
+            for marker in (
+                'id="appSidebar"', 'id="topStatusCard"', 'id="mobileBottomNav"', 'id="mobNavGlider"',
+                "case 'logout-panel':", 'pwa-standalone',
+                'id="worksGalleryScroll"', 'container: works-card / inline-size;', 'container: settings-card / inline-size;',
+                'const docked = !isMobileScrollShell();', 'navPage: currentPage,', 'function getDesktopScrollEl('
+            ):
+                assert marker in ui_txt, f'missing UI marker: {marker}'
+            import hashlib as _hl, re as _re
+            _sm = _re.search(r'<script>(.*)</script>', ui_txt, _re.S)
+            assert _sm, 'inline script missing in ui/panel_ui.html'
+            _sha = base64.b64encode(_hl.sha256(_sm.group(1).encode('utf-8')).digest()).decode('ascii')
+            assert f"script-src 'sha256-{_sha}'" in ui_txt, f'CSP script-src sha256 mismatch: expected {_sha}'
+            assert ui_txt == panel.HTML_PAGE, 'ui/panel_ui.html out of sync with web_panel.HTML_PAGE'
+            print('PASS v0.2.6 unified fixed dual-column layout, CSP SHA-256 exact match & UI/backend contract')
     print('ALL SMOKE TESTS PASSED')
 
 

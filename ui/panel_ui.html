@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-vr67P8oBb7/cx9nJgQSiDyf2ignFgA8Th0VVGWoe5e4='; style-src 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; form-action 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; media-src 'self'; font-src 'none'; worker-src 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-XvCQtZHpkxkT6Jw5e8SqKwpU6WDZCguGWk8eSR8tv8k='; style-src 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; form-action 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; media-src 'self'; font-src 'none'; worker-src 'none'">
   <meta name="color-scheme" content="light dark">
   <meta name="theme-color" id="metaThemeColor" content="#EEF1F6">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1120,7 +1120,7 @@
   .hw-bar-fill.warn { background: var(--amber-bar); }
   .hw-bar-fill.danger { background: var(--red-bar); }
 
-  /* ---- Main Stage & Docked/Drawer Live Task Panel (Desktop Matches Sidebar Full Height Across All 5 Views) ---- */
+  /* ---- Main Stage & Unified Fixed Viewport App-Shell (All 5 Views Identical Outer Frame + Docked Dual Column) ---- */
   .app-stage {
     flex: 1 1 auto;
     width: 100%;
@@ -1136,58 +1136,129 @@
     align-items: stretch;
   }
   @media (min-width: 1025px) {
+    html, body {
+      height: 100%;
+      overflow: hidden;
+    }
+    .app-shell {
+      height: 100dvh;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .app-content {
+      height: 100dvh;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .top-status-card {
+      flex: 0 0 auto;
+    }
+    .top-card-row1 {
+      flex-wrap: nowrap;
+    }
+    .top-card-left {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+    }
+    .top-card-right {
+      flex: 0 0 auto;
+      flex-wrap: nowrap;
+    }
+    .app-stage {
+      flex: 1 1 0;
+      min-height: 0;
+      overflow: hidden;
+    }
     .app-pages {
       display: flex;
       flex-direction: column;
-      min-height: 100%;
+      height: 100%;
+      min-height: 0;
+      overflow: hidden;
     }
     .page-view.active {
       flex: 1 1 auto;
-      min-height: 100%;
+      height: 100%;
+      min-height: 0;
+      overflow: hidden;
     }
     #pageCreation.active .card-main,
     #pageCreation.active .creation-body {
       flex: 1 1 auto;
+      height: 100%;
       display: flex;
       flex-direction: column;
       min-height: 0;
+      overflow: hidden;
+    }
+    #pageCreation .creation-body:not([data-mod="llm"]) .param-panel {
+      flex: 0 1 auto;
+      min-height: 0;
+      overflow-y: auto;
+      padding-right: 2px;
+    }
+    #pageCreation .creation-body:not([data-mod="llm"]) .prompt-label-row {
+      flex: 0 0 auto;
     }
     #pageCreation .creation-body:not([data-mod="llm"]) .mod-input.active {
-      flex: 1 1 auto;
+      flex: 1 1 124px;
       height: auto;
-      min-height: 132px;
+      min-height: 96px;
       resize: none;
     }
+    #pageCreation .creation-body .action-bar {
+      flex: 0 0 auto;
+    }
     #pageCreation .creation-body[data-mod="llm"] .param-panel {
-      flex: 1 1 auto;
+      flex: 1 1 0;
       display: flex;
       flex-direction: column;
       min-height: 0;
+      overflow: hidden;
     }
     #pageCreation .creation-body[data-mod="llm"] #modSecLlm.active {
-      flex: 1 1 auto;
+      flex: 1 1 0;
       min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    #pageCreation .creation-body[data-mod="llm"] .chat-toolbar,
+    #pageCreation .creation-body[data-mod="llm"] .llm-video-ctx {
+      flex: 0 0 auto;
     }
     #pageCreation .creation-body[data-mod="llm"] .chat-box {
       flex: 1 1 0;
-      min-height: 260px;
-      max-height: calc(100dvh - 380px);
+      min-height: 160px;
+      max-height: none;
+    }
+    #pageCreation .creation-body[data-mod="llm"] #promptInputLlm.active {
+      flex: 0 0 92px;
+      height: 92px;
+      min-height: 92px;
+      resize: none;
     }
     #pageWorks.active .card-works {
       flex: 1 1 auto;
-      min-height: 100%;
-    }
-    #pageWorks.active .works-gallery-card {
-      flex: 1 1 auto;
-    }
-    body[data-page="settings"] .app-content {
-      height: 100dvh;
-      overflow: hidden;
-    }
-    body[data-page="settings"] .app-pages,
-    body[data-page="settings"] #pageSettings.active {
       height: 100%;
       min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      container: works-card / inline-size;
+    }
+    #pageWorks.active .works-top-card {
+      flex: 0 0 auto;
+      position: relative;
+      z-index: 12;
+      overflow: visible;
+    }
+    #pageWorks.active .works-gallery-card {
+      flex: 1 1 0;
+      min-height: 0;
+      overflow-y: auto;
+      padding-right: 2px;
     }
     #pageSettings.active .settings-page-card {
       flex: 1 1 auto;
@@ -1196,34 +1267,48 @@
       display: flex;
       flex-direction: column;
       overflow: hidden;
+      container: settings-card / inline-size;
     }
     #pageSettings.active .settings-page-card .settings-body {
-      flex: 1 1 auto;
+      flex: 1 1 0;
       min-height: 0;
       overflow-y: auto;
     }
     #pageSettings.active .settings-page-card .settings-foot {
       position: static;
       box-shadow: none;
+      flex: 0 0 auto;
     }
     .app-stage[data-task-mode="docked"] .task-panel-wrap {
-      min-height: 100%;
+      position: static;
+      top: auto;
+      height: 100%;
+      min-height: 0;
+      max-height: none;
     }
     .app-stage[data-task-mode="docked"] .task-panel-wrap .card-progress {
       height: 100%;
-      min-height: 100%;
-      max-height: calc(100dvh - 28px);
+      min-height: 0;
+      max-height: none;
+      overflow: hidden;
     }
     .app-stage[data-task-mode="docked"] .task-panel-wrap .task-ledger {
       height: auto;
-      min-height: 180px;
+      min-height: 156px;
       max-height: none;
       flex: 1 1 52%;
     }
     .app-stage[data-task-mode="docked"] .task-panel-wrap .log-console {
       height: auto;
-      min-height: 180px;
+      min-height: 156px;
       flex: 1 1 48%;
+    }
+    .float-dock {
+      right: calc(max(0px, 100vw - var(--sidebar-w) - var(--shell-gap) - 1580px) + var(--shell-gap) + 18px);
+      bottom: calc(var(--shell-gap) + 18px);
+    }
+    body.task-docked-open .float-dock {
+      right: calc(max(0px, 100vw - var(--sidebar-w) - var(--shell-gap) - 1580px) + var(--task-col-w) + var(--shell-gap) * 2 + 18px);
     }
   }
   .app-stage[data-task-mode="docked"].task-collapsed {
@@ -1255,25 +1340,27 @@
     flex-direction: column;
   }
   .app-stage[data-task-mode="docked"] .task-panel-wrap {
-    position: sticky;
-    top: var(--shell-gap);
-    max-height: calc(100dvh - 28px);
+    position: static;
+    height: 100%;
+    min-height: 0;
+    max-height: none;
   }
   .app-stage[data-task-mode="docked"] .task-panel-wrap .card-progress {
     height: 100%;
-    max-height: calc(100dvh - 28px);
+    min-height: 0;
+    max-height: none;
     overflow: hidden;
   }
   .app-stage[data-task-mode="docked"] .task-panel-wrap .task-ledger {
-    height: 176px;
+    height: auto;
     min-height: 156px;
-    max-height: 260px;
-    flex: 1 1 auto;
+    max-height: none;
+    flex: 1 1 52%;
   }
   .app-stage[data-task-mode="docked"] .task-panel-wrap .log-console {
-    height: 176px;
-    min-height: 168px;
-    flex: 1 1 176px;
+    height: auto;
+    min-height: 156px;
+    flex: 1 1 48%;
   }
 
   .app-stage[data-task-mode="drawer"] .task-panel-wrap {
@@ -3644,6 +3731,34 @@
     .img-prompt-actions .btn-xs { padding: 0 5.5px; height: 23px; font-size: 10.5px; }
   }
 
+  @container works-card (max-width: 1020px) {
+    .gallery-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+  @container works-card (max-width: 920px) {
+    .works-toolbar { grid-template-columns: minmax(0, 1fr); gap: 9px; }
+    .works-head-left { width: 100%; }
+  }
+  @container works-card (max-width: 660px) {
+    .gallery-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .gallery-grid.single-col { grid-template-columns: minmax(0, 1fr); }
+  }
+  @container works-card (max-width: 359px) {
+    .gallery-grid { grid-template-columns: minmax(0, 1fr); }
+  }
+  @container settings-card (max-width: 740px) {
+    .settings-grid-5 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .settings-grid-6 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .res-row-item { grid-template-columns: minmax(0, 1fr) 16px minmax(0, 1fr); }
+    .res-row-item .row-tag, .res-row-item .res-arrow-sep { grid-column: 1 / -1; text-align: left; }
+    .tier-row-item { grid-template-columns: minmax(0, 1fr) 18px minmax(0, 1fr); }
+    .tier-row-item .row-tag, .tier-row-item .tier-total-pill { grid-column: 1 / -1; }
+  }
+  @container settings-card (max-width: 540px) {
+    .settings-grid-5 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .settings-grid-2 { grid-template-columns: minmax(0, 1fr); }
+    .settings-foot { flex-direction: column; align-items: stretch; gap: 8px; }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
       animation-duration: 0.01ms !important;
@@ -4141,7 +4256,7 @@
     </div>
     </div>
 
-    <div class="works-gallery-card">
+    <div class="works-gallery-card" id="worksGalleryScroll">
     <div id="galleryPaginationTop" class="pagination-bar pagination-top" data-pos="top">
       <div class="pagination-meta-left">
         <span id="paginationInfoTop" class="pagination-info">共 0 项</span>
@@ -4915,21 +5030,29 @@ function syncInactiveWorksMirror() {}
 function isCreationPage(page) { return page === 'image' || page === 'video' || page === 'llm'; }
 
 function isMobileScrollShell() { return (window.innerWidth || 1280) <= 1024; }
-function getMainScrollY() {
+function getDesktopScrollEl(page = currentPage) {
+  if (page === 'works') return document.getElementById('worksGalleryScroll');
+  if (page === 'settings') return document.getElementById('settingsBody');
+  if (page === 'llm') return document.getElementById('chatBox');
+  return document.getElementById('paramPanel');
+}
+function getMainScrollY(page = currentPage) {
   if (isMobileScrollShell()) {
     const c = document.getElementById('appContent');
     return c ? Math.max(0, c.scrollTop || 0) : 0;
   }
-  return Math.max(0, window.scrollY || document.documentElement.scrollTop || 0);
+  const el = getDesktopScrollEl(page);
+  return el ? Math.max(0, el.scrollTop || 0) : 0;
 }
-function setMainScrollY(y, smooth = false) {
+function setMainScrollY(y, smooth = false, page = currentPage) {
   const target = Math.max(0, y || 0);
   const beh = (smooth && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) ? 'smooth' : 'auto';
   if (isMobileScrollShell()) {
     const c = document.getElementById('appContent');
     if (c) c.scrollTo({ top: target, behavior: beh });
   } else {
-    window.scrollTo({ top: target, behavior: beh });
+    const el = getDesktopScrollEl(page);
+    if (el) el.scrollTo({ top: target, behavior: beh });
   }
 }
 
@@ -4948,11 +5071,13 @@ function syncTaskPanelLayout() {
   const backdrop = document.getElementById('taskDrawerBackdrop');
   const pill = document.getElementById('globalTaskPill');
   if (!stage) return;
-  const docked = isCreationPage(currentPage);
+  const docked = !isMobileScrollShell();
+  if (docked) taskDrawerOpen = false;
   stage.dataset.taskMode = docked ? 'docked' : 'drawer';
   stage.classList.toggle('task-collapsed', docked && taskPanelCollapsed);
   const isDrawerVis = !docked && taskDrawerOpen;
   stage.classList.toggle('drawer-open', isDrawerVis);
+  document.body.classList.toggle('task-docked-open', docked && !taskPanelCollapsed);
   if (backdrop) {
     backdrop.classList.toggle('open', isDrawerVis);
     backdrop.setAttribute('aria-hidden', isDrawerVis ? 'false' : 'true');
@@ -4970,11 +5095,7 @@ function setTaskDrawerOpen(open) {
 }
 
 function toggleTaskPanel() {
-  if (isCreationPage(currentPage)) {
-    if (isMobileScrollShell()) {
-      document.getElementById('progressCard')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      return;
-    }
+  if (!isMobileScrollShell()) {
     taskPanelCollapsed = !taskPanelCollapsed;
     try { localStorage.setItem(TASK_COLLAPSED_KEY, taskPanelCollapsed ? '1' : '0'); } catch (_) {}
     syncTaskPanelLayout();
@@ -5038,8 +5159,8 @@ function navigateTo(page, opts = {}) {
   syncTaskPanelLayout();
 
   if (!initialRestore) {
-    if (prevPage !== page) {
-      setMainScrollY(opts.scrollTop ? 0 : (pageScrollMemory[page] || 0), false);
+    if (prevPage !== page && (isMobileScrollShell() || page !== 'llm')) {
+      setMainScrollY(opts.scrollTop ? 0 : (pageScrollMemory[page] || 0), false, page);
     }
     if (!_restoringUiState) setTimeout(savePanelUiState, 60);
   }
@@ -5068,18 +5189,23 @@ document.addEventListener('focusout', () => {
 });
 
 function syncBackToTopVisibility() {
-  const y = getMainScrollY();
   const topBtn = document.getElementById('backToTopBtn');
-  if (topBtn) topBtn.hidden = y <= 240;
+  if (!topBtn) return;
+  if (!isMobileScrollShell() && currentPage === 'llm') {
+    topBtn.hidden = true;
+    return;
+  }
+  const y = getMainScrollY();
+  topBtn.hidden = y <= 240;
 }
-window.addEventListener('scroll', () => {
+const _onMainContainerScroll = () => {
   syncBackToTopVisibility();
   scheduleSavePanelUiState();
-}, { passive: true });
-document.getElementById('appContent')?.addEventListener('scroll', () => {
-  syncBackToTopVisibility();
-  scheduleSavePanelUiState();
-}, { passive: true });
+};
+window.addEventListener('scroll', _onMainContainerScroll, { passive: true });
+['appContent', 'worksGalleryScroll', 'settingsBody', 'paramPanel'].forEach(id => {
+  document.getElementById(id)?.addEventListener('scroll', _onMainContainerScroll, { passive: true });
+});
 window.addEventListener('resize', () => {
   syncTaskPanelLayout();
   if (document.getElementById('warmupPicker')?.classList.contains('open')) positionWarmupPicker();
@@ -6809,14 +6935,18 @@ function alignDriveSyncPicker(box) {
   box.style.right = '0px';
   const aRect = anchor.getBoundingClientRect();
   const vw = document.documentElement.clientWidth || window.innerWidth || 390;
-  const w = Math.min(308, vw - 24);
+  const host = (!isMobileScrollShell() && box.closest('.card-works')) || null;
+  const hRect = host ? host.getBoundingClientRect() : null;
+  const minLeft = hRect ? Math.round(hRect.left + 12) : 10;
+  const maxRight = hRect ? Math.round(hRect.right - 12) : (vw - 10);
+  const w = Math.min(308, Math.max(220, maxRight - minLeft));
   const idealLeft = aRect.right - w;
-  if (idealLeft < 10) {
+  if (idealLeft < minLeft) {
     box.style.right = 'auto';
-    box.style.left = `${Math.round(10 - aRect.left)}px`;
-  } else if (aRect.right > vw - 10) {
+    box.style.left = `${Math.round(minLeft - aRect.left)}px`;
+  } else if (aRect.right > maxRight) {
     box.style.left = 'auto';
-    box.style.right = `${Math.round(aRect.right - (vw - 10))}px`;
+    box.style.right = `${Math.round(aRect.right - maxRight)}px`;
   }
 }
 
@@ -8826,12 +8956,16 @@ document.addEventListener('click', async (e) => {
         galleryPage = p;
         renderGallery(true);
         if (fromBottom) {
-          const wb = document.getElementById('worksBody');
-          const cEl = isMobileScrollShell() ? document.getElementById('appContent') : null;
-          const topY = wb
-            ? Math.max(0, Math.round(wb.getBoundingClientRect().top - (cEl ? cEl.getBoundingClientRect().top : 0) + getMainScrollY() - 10))
-            : 0;
-          setMainScrollY(topY, true);
+          if (isMobileScrollShell()) {
+            const wb = document.getElementById('worksBody');
+            const cEl = document.getElementById('appContent');
+            const topY = wb
+              ? Math.max(0, Math.round(wb.getBoundingClientRect().top - (cEl ? cEl.getBoundingClientRect().top : 0) + getMainScrollY() - 10))
+              : 0;
+            setMainScrollY(topY, true);
+          } else {
+            setMainScrollY(0, true, 'works');
+          }
         }
         savePanelUiState();
       }
@@ -9018,7 +9152,7 @@ function savePanelUiState(extra = null) {
   if (_restoringUiState) return;
   try {
     const payload = {
-      page: currentPage,
+      navPage: currentPage,
       view: currentView,
       mod: currentMod,
       tab: currentTab,
@@ -9126,8 +9260,11 @@ let _forceStatusOnBoot = false;
     if (Number.isInteger(saved.page) && saved.page >= 1) {
       galleryPage = saved.page;
     }
-    if (saved.page && VALID_PAGES.includes(saved.page)) {
-      navigateTo(saved.page, { initialRestore: true });
+    const restoredNavPage = (typeof saved.navPage === 'string' && VALID_PAGES.includes(saved.navPage))
+      ? saved.navPage
+      : (typeof saved.page === 'string' && VALID_PAGES.includes(saved.page) ? saved.page : '');
+    if (restoredNavPage) {
+      navigateTo(restoredNavPage, { initialRestore: true });
     } else if (saved.view === 'works') {
       navigateTo('works', { initialRestore: true });
     } else if (saved.mod && VALID_CREATION_MODS.includes(saved.mod)) {
