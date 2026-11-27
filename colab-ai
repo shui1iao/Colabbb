@@ -701,7 +701,7 @@ def _startup_call(action, lock, session, gpu):
         if res.returncode == 0 and lines:
             result = json.loads(lines[-1].split("=", 1)[1])
             if isinstance(result, dict) and result.get("status") in (
-                "prepared", "allocated", "empty", "wait", "retryable", "rejected", "blocked"
+                "prepared", "allocated", "empty", "wait", "retryable", "no_runtimes", "rejected", "blocked"
             ):
                 return result
     except (subprocess.SubprocessError, OSError, ValueError):
@@ -814,9 +814,8 @@ def _recover_start_locked(lock, session, gpu) -> str:
             sched = (15.0, 15.0) if fb == "A100" else (15.0,)
             plan.append((alt_email, fb, sched))
         for fb in fallbacks:
-            if fb == "H100":
-                continue
-            plan.append((active_email, fb, (15.0,)))
+            sched = (15.0, 15.0) if fb == "A100" else (15.0,)
+            plan.append((active_email, fb, sched))
     else:
         for idx, spec in enumerate(chain):
             if idx == 0 or spec == "A100" or len(chain) == 1:
@@ -853,19 +852,19 @@ def _recover_start_locked(lock, session, gpu) -> str:
                 return disp_gpu
 
         acct_prefix = f"{_short_acct_tag(active_email)}:" if multi_acct_mode and active_email else ""
-        result = _startup_call("prepare", lock, session, cur_gpu)
-        if result["status"] != "prepared":
-            raise SystemExit("[colab-ai] " + result.get("message", "启动身份核对失败；保留保护。"))
         print(f"[colab-ai] 正在请求 Colab {disp_gpu} 分配（账号 {active_email or '默认'}）...", flush=True)
 
         max_attempts = len(backoff_schedule)
+        last_no_runtimes_at = 0.0
         for attempt in range(max_attempts):
             _check_generation(session)
             pending = read_pending(lock, session, cur_gpu)
             min_gap = backoff_schedule[attempt]
-            delay = min(min_gap, max(0.0, pending["last_post_at"] + min_gap - time.time())) if pending["last_post_at"] > 0 else 0.0
+            ref_post_ts = pending["last_post_at"] if (pending and pending["last_post_at"] > 0) else last_no_runtimes_at
+            delay = min(min_gap, max(0.0, ref_post_ts + min_gap - time.time())) if ref_post_ts > 0 else 0.0
             if delay:
-                print(f"[colab-ai] Google {disp_gpu} 分配尚未确认，等待 {int(round(delay))} 秒后核对重试 ({attempt + 1}/{max_attempts})...", flush=True)
+                wait_reason = "当前无空闲实例" if (pending is None and last_no_runtimes_at > 0) else "分配尚未确认"
+                print(f"[colab-ai] Google {disp_gpu} {wait_reason}，等待 {int(round(delay))} 秒后重试 ({attempt + 1}/{max_attempts})...", flush=True)
                 deadline = time.monotonic() + delay
                 while time.monotonic() < deadline:
                     _check_generation(session)
@@ -874,6 +873,10 @@ def _recover_start_locked(lock, session, gpu) -> str:
             if _auto_attach_remote_session_locked(session, lock):
                 _set_start_pending(lock, False)
                 return disp_gpu
+            if pending is None:
+                prep_res = _startup_call("prepare", lock, session, cur_gpu)
+                if prep_res["status"] != "prepared":
+                    raise SystemExit("[colab-ai] " + prep_res.get("message", "启动身份核对失败；保留保护。"))
             result = _startup_call("attempt", lock, session, cur_gpu)
             _check_generation(session)
             if result["status"] == "allocated":
@@ -897,6 +900,15 @@ def _recover_start_locked(lock, session, gpu) -> str:
                     print(f"[colab-ai] Google 拒绝了 {disp_gpu} 分配请求{err_note}，已确认无实例，切换下一候选...", flush=True)
                     break
                 break
+            if result["status"] == "no_runtimes":
+                _set_start_pending(lock, False)
+                last_no_runtimes_at = time.time()
+                if attempt == max_attempts - 1:
+                    tried_summary.append(f"{acct_prefix}{disp_gpu}{err_note}")
+                    if has_next:
+                        print(f"[colab-ai] {acct_prefix}{disp_gpu} 暂无空闲实例{err_note}，已确认无实例，切换下一候选...", flush=True)
+                    break
+                continue
             if result["status"] != "retryable":
                 message = result.get("message") or (
                     f"{disp_gpu} 分配被拒绝或响应异常{err_note}；保留原请求身份，请稍后再点开机核对，不会盲目新建。"

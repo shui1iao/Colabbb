@@ -493,6 +493,8 @@ def _create_via_public_api(client, quota_project: str, request_id: uuid.UUID, va
                 "err_kind": kind,
                 "message": "未找到可用的 GCP 配额项目；请在 Google Cloud 控制台创建一个免费空项目或在 .env 中设置 COLABBB_QUOTA_PROJECT。",
             }
+        if reason == "NO_RUNTIMES" or code == 429:
+            return {"status": "no_runtimes", "http_status": code, "err_kind": reason or f"HTTP {code}"}
         if 500 <= code <= 599:
             return {"status": "retryable", "http_status": code, "err_kind": kind}
         if 400 <= code <= 499:
@@ -535,7 +537,9 @@ def _create_via_public_api(client, quota_project: str, request_id: uuid.UUID, va
             if st == "allocated":
                 return {"status": "allocated_obj", "obj": la}
         label = reason or (f"RPC {rpc_code}" if rpc_code is not None else "Unavailable")
-        # FAILED_PRECONDITION (9) / INVALID_ARGUMENT (3) / PERMISSION_DENIED (7) -> definitive non-creation for this spec/account
+        if rpc_code == 9 and reason == "NO_RUNTIMES":
+            return {"status": "no_runtimes", "http_status": 503, "err_kind": label}
+        # Other FAILED_PRECONDITION (9) / INVALID_ARGUMENT (3) / PERMISSION_DENIED (7) -> definitive non-creation for this spec/account
         if rpc_code in (3, 7, 9):
             return {"status": "rejected", "http_status": 412 if rpc_code == 9 else 400, "err_kind": label}
         if rpc_code in (4, 8, 13, 14):

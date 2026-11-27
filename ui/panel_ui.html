@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-Evdend8CnX+TOX2islbcCdEaefo11xYtxX0Oy72zavw='; style-src 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; form-action 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; media-src 'self'; font-src 'none'; worker-src 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-1rD7Fza1QAvusCKGOBPU9ouT3Pugt98N4UDmmjEnERI='; style-src 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; form-action 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; media-src 'self'; font-src 'none'; worker-src 'none'">
   <meta name="color-scheme" content="light dark">
   <meta name="theme-color" id="metaThemeColor" content="#EEF1F6">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -824,7 +824,6 @@
     flex-direction: column;
     gap: var(--shell-gap);
     min-height: 100dvh;
-    max-width: 1580px;
   }
 
   /* ---- Unified Top Instance Status Card (Present Across ALL Pages, Matching Card Surface) ---- */
@@ -947,7 +946,7 @@
   .hdr-cu-btn:active { background: var(--press); }
   .hdr-cu-btn[aria-expanded="true"] { background: var(--blue-soft); color: var(--blue); }
   .hdr-cu-btn[aria-expanded="true"] .cu-chevron { transform: rotate(180deg); color: var(--blue); }
-  .hdr-cu-btn .cu-acct-desk { color: var(--fg-secondary); font-weight: 500; }
+  .hdr-cu-btn .cu-acct-desk { color: var(--fg-secondary); font-weight: 500; max-width: 112px; overflow: hidden; text-overflow: ellipsis; }
   .hdr-cu-btn .cu-acct-mob { display: none; color: var(--fg-secondary); font-weight: 500; }
   .hdr-cu-btn #cuText { font-weight: 600; color: var(--fg); font-variant-numeric: tabular-nums; }
   .hdr-cu-btn .cu-chevron { width: 12px; height: 12px; color: var(--muted); transition: transform var(--t) var(--ease), color var(--t-fast) var(--ease); flex-shrink: 0; }
@@ -1050,7 +1049,7 @@
     transform: rotate(0deg);
   }
 
-  /* 4-Column Zeno Hardware Telemetry Bar inside Top Status Card */
+  /* 4-Column Studio Hardware Telemetry Bar inside Top Status Card */
   .topbar-hw {
     width: 100%;
     padding-top: 10px;
@@ -1169,14 +1168,14 @@
       flex-wrap: nowrap;
     }
     #g4Badge {
-      width: 118px;
+      min-width: 152px;
+      padding: 0 11px;
       justify-content: center;
-      overflow: hidden;
     }
     #cuBadge {
-      width: 176px;
+      min-width: 218px;
+      padding: 0 11px;
       justify-content: center;
-      overflow: hidden;
     }
     #startG4Btn,
     #warmupG4Btn {
@@ -1334,11 +1333,11 @@
       flex: 1 1 48%;
     }
     .float-dock {
-      right: calc(max(0px, 100vw - var(--sidebar-w) - var(--shell-gap) - 1580px) + var(--shell-gap) + 18px);
+      right: calc(var(--shell-gap) + 18px);
       bottom: calc(var(--shell-gap) + 18px);
     }
     body.task-docked-open .float-dock {
-      right: calc(max(0px, 100vw - var(--sidebar-w) - var(--shell-gap) - 1580px) + var(--task-col-w) + var(--shell-gap) * 2 + 18px);
+      right: calc(var(--task-col-w) + var(--shell-gap) * 2 + 18px);
     }
   }
   .app-stage[data-task-mode="docked"].task-collapsed {
@@ -1393,37 +1392,45 @@
     flex: 1 1 48%;
   }
 
-  .app-stage[data-task-mode="drawer"] .task-panel-wrap {
+  .app-stage[data-task-mode="drawer"] .task-panel-wrap,
+  .task-panel-wrap[data-drawer="1"] {
     position: fixed;
     top: 14px;
     right: 14px;
     bottom: 14px;
     width: min(410px, calc(100vw - 28px));
-    z-index: 90;
+    z-index: 105;
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
     transform: translate3d(24px, 0, 0);
     transition: transform 200ms var(--ease), opacity 180ms var(--ease), visibility 0s linear 200ms;
   }
-  .app-stage[data-task-mode="drawer"].drawer-open .task-panel-wrap {
+  .app-stage[data-task-mode="drawer"].drawer-open .task-panel-wrap,
+  .task-panel-wrap[data-drawer="1"].drawer-open {
     opacity: 1;
     visibility: visible;
     pointer-events: auto;
     transform: translate3d(0, 0, 0);
     transition: transform 200ms var(--ease), opacity 180ms var(--ease), visibility 0s linear 0s;
   }
-  .app-stage[data-task-mode="drawer"] .task-panel-wrap .card-progress {
+  .app-stage[data-task-mode="drawer"] .task-panel-wrap .card-progress,
+  .task-panel-wrap[data-drawer="1"] .card-progress {
+    width: 100%;
     height: 100%;
+    min-height: 0;
+    overflow: hidden;
     box-shadow: var(--shadow-modal);
     border-color: var(--line-strong);
   }
-  .app-stage[data-task-mode="drawer"] .task-panel-wrap .task-ledger {
+  .app-stage[data-task-mode="drawer"] .task-panel-wrap .task-ledger,
+  .task-panel-wrap[data-drawer="1"] .task-ledger {
     flex: 1 1 50%;
     height: auto;
     min-height: 160px;
   }
-  .app-stage[data-task-mode="drawer"] .task-panel-wrap .log-console {
+  .app-stage[data-task-mode="drawer"] .task-panel-wrap .log-console,
+  .task-panel-wrap[data-drawer="1"] .log-console {
     flex: 0 0 210px;
     height: 210px;
   }
@@ -1434,7 +1441,8 @@
     padding: 0;
     flex: 0 0 28px;
   }
-  .app-stage[data-task-mode="drawer"] .task-drawer-close {
+  .app-stage[data-task-mode="drawer"] .task-drawer-close,
+  .task-panel-wrap[data-drawer="1"] .task-drawer-close {
     display: inline-flex;
   }
   .task-sheet-handle {
@@ -1591,7 +1599,8 @@
   html.pwa-standalone .toast {
     bottom: calc(64px + max(24px, env(safe-area-inset-bottom, 24px)));
   }
-  html.pwa-standalone .app-stage[data-task-mode="drawer"] .task-panel-wrap {
+  html.pwa-standalone .app-stage[data-task-mode="drawer"] .task-panel-wrap,
+  html.pwa-standalone .task-panel-wrap[data-drawer="1"] {
     bottom: calc(62px + max(24px, env(safe-area-inset-bottom, 24px)));
   }
   @media (display-mode: standalone) {
@@ -1605,7 +1614,8 @@
     .toast {
       bottom: calc(64px + max(24px, env(safe-area-inset-bottom, 24px)));
     }
-    .app-stage[data-task-mode="drawer"] .task-panel-wrap {
+    .app-stage[data-task-mode="drawer"] .task-panel-wrap,
+    .task-panel-wrap[data-drawer="1"] {
       bottom: calc(62px + max(24px, env(safe-area-inset-bottom, 24px)));
     }
   }
@@ -1864,6 +1874,7 @@
     overflow-x: auto;
     overflow-y: hidden;
     padding: 2px;
+    touch-action: pan-x pan-y;
     -webkit-overflow-scrolling: touch;
   }
   .ref-thumb-card {
@@ -2188,8 +2199,10 @@
   .task-badge .s-dot { width: 5.5px; height: 5.5px; border-radius: 50%; background: var(--muted); }
   .task-item-wrap.running .task-badge { background: var(--blue-soft); color: var(--blue); }
   .task-item-wrap.running .task-badge .s-dot { background: var(--blue); }
-  .task-item-wrap.queued .task-badge { background: var(--amber-soft); color: var(--amber); }
-  .task-item-wrap.queued .task-badge .s-dot { background: var(--amber); }
+  .task-item-wrap.queued .task-badge,
+  .task-item-wrap.paused .task-badge { background: var(--amber-soft); color: var(--amber); }
+  .task-item-wrap.queued .task-badge .s-dot,
+  .task-item-wrap.paused .task-badge .s-dot { background: var(--amber); }
   .task-item-wrap.done .task-badge { background: var(--green-soft); color: var(--green); }
   .task-item-wrap.done .task-badge .s-dot { background: var(--green); }
   .task-item-wrap.error .task-badge { background: var(--red-soft); color: var(--red); }
@@ -3539,39 +3552,42 @@
       --shell-gap: 12px;
     }
     .top-status-card { padding: 11px 14px; }
-    #g4Badge { width: 104px; padding: 0 8px; }
-    #cuBadge { width: 148px; padding: 0 8px; }
+    #g4Badge { min-width: 138px; padding: 0 9px; justify-content: center; }
+    #cuBadge { min-width: 186px; padding: 0 9px; justify-content: center; }
+    .hdr-cu-btn .cu-acct-desk { max-width: 78px; }
     #startG4Btn, #warmupG4Btn { width: 70px; padding: 0 6px; }
     #globalStopMiniBtn { width: 44px; padding: 0 5px; }
-    #globalTaskPill { width: 136px; max-width: 136px; padding: 0 8px; }
+    #globalTaskPill { width: 132px; max-width: 132px; padding: 0 8px; }
   }
 
   /* Tablet & Mobile (<= 1024px): Locked 100% App-Shell + Internal Scroll (Zero Safari Fixed Bottom Mask / Auto-Lift) */
   @media (max-width: 1024px) {
     html, body {
       height: 100%;
+      height: 100dvh;
+      min-height: 0;
       overflow: hidden;
-      overscroll-behavior: none;
     }
     .app-shell {
       position: relative;
       flex-direction: column;
       height: 100%;
+      height: 100dvh;
       min-height: 0;
       overflow: hidden;
     }
     .app-sidebar { display: none !important; }
     .app-content {
-      flex: 1 1 auto;
+      display: block;
+      flex: 1 1 0%;
       min-height: 0;
-      height: 100%;
+      height: auto;
       margin-left: 0;
       overflow-y: auto;
       overflow-x: hidden;
       -webkit-overflow-scrolling: touch;
       overscroll-behavior-y: contain;
-      padding: 10px 10px 66px;
-      gap: 10px;
+      padding: 10px 10px 76px;
     }
     .mob-header-brand { display: inline-flex; }
     .mob-fold-top-btn { display: inline-flex; }
@@ -3580,7 +3596,7 @@
     .hdr-sep { display: none; }
     .mob-bottom-nav { display: block; }
 
-    .top-status-card { padding: 11px 12px; gap: 10px; }
+    .top-status-card { padding: 11px 12px; gap: 10px; margin-bottom: 10px; }
     .top-card-row1 { gap: 8px; }
     .top-card-left { flex: 1 1 auto; }
     .top-card-right {
@@ -3632,8 +3648,9 @@
 
     .app-stage,
     .app-stage[data-task-mode="docked"] {
-      grid-template-columns: minmax(0, 1fr);
-      gap: 10px;
+      display: block;
+      min-height: auto;
+      height: auto;
     }
     .app-stage[data-task-mode="docked"].task-collapsed .task-panel-wrap { display: flex; }
     .app-stage[data-task-mode="docked"] .task-panel-wrap { position: static; max-height: none; }
@@ -3641,20 +3658,30 @@
     .app-stage[data-task-mode="docked"] .task-panel-wrap .task-ledger { max-height: 220px; }
     .app-stage[data-task-mode="docked"] .task-panel-wrap .log-console { height: 164px; }
 
-    .app-stage[data-task-mode="drawer"] .task-panel-wrap {
+    .app-stage[data-task-mode="drawer"] .task-panel-wrap,
+    .task-panel-wrap[data-drawer="1"] {
       top: auto;
       left: 8px;
       right: 8px;
       bottom: 64px;
-      width: auto;
+      width: calc(100vw - 16px);
+      max-width: calc(100vw - 16px);
       max-height: min(76dvh, 620px);
       transform: translate3d(0, 28px, 0);
     }
-    .app-stage[data-task-mode="drawer"].drawer-open .task-panel-wrap { transform: translate3d(0, 0, 0); }
-    .app-stage[data-task-mode="drawer"] .task-sheet-handle { display: block; }
-    .app-stage[data-task-mode="drawer"] .task-panel-wrap .card-progress { max-height: min(76dvh, 620px); height: auto; }
-    .app-stage[data-task-mode="drawer"] .task-panel-wrap .task-ledger { max-height: 200px; }
-    .app-stage[data-task-mode="drawer"] .task-panel-wrap .log-console { flex: 0 0 148px; height: 148px; }
+    html.pwa-standalone .task-panel-wrap[data-drawer="1"] {
+      bottom: calc(62px + max(24px, env(safe-area-inset-bottom, 24px)));
+    }
+    .app-stage[data-task-mode="drawer"].drawer-open .task-panel-wrap,
+    .task-panel-wrap[data-drawer="1"].drawer-open { transform: translate3d(0, 0, 0); }
+    .app-stage[data-task-mode="drawer"] .task-sheet-handle,
+    .task-panel-wrap[data-drawer="1"] .task-sheet-handle { display: block; }
+    .app-stage[data-task-mode="drawer"] .task-panel-wrap .card-progress,
+    .task-panel-wrap[data-drawer="1"] .card-progress { width: 100%; max-height: min(76dvh, 620px); min-height: 0; height: auto; overflow: hidden; }
+    .app-stage[data-task-mode="drawer"] .task-panel-wrap .task-ledger,
+    .task-panel-wrap[data-drawer="1"] .task-ledger { flex: 1 1 auto; min-height: 84px; max-height: 200px; }
+    .app-stage[data-task-mode="drawer"] .task-panel-wrap .log-console,
+    .task-panel-wrap[data-drawer="1"] .log-console { flex: 0 1 148px; min-height: 72px; height: 148px; }
 
     .float-dock {
       right: 14px;
@@ -5135,6 +5162,7 @@ function syncNavRunningDots(isRunning, badgeText = '') {
 
 function syncTaskPanelLayout() {
   const stage = document.getElementById('appStage');
+  const panel = document.getElementById('taskPanelWrap');
   const backdrop = document.getElementById('taskDrawerBackdrop');
   const pill = document.getElementById('globalTaskPill');
   if (!stage) return;
@@ -5145,6 +5173,25 @@ function syncTaskPanelLayout() {
   const isDrawerVis = !docked && taskDrawerOpen;
   stage.classList.toggle('drawer-open', isDrawerVis);
   document.body.classList.toggle('task-docked-open', docked && !taskPanelCollapsed);
+  if (panel) {
+    if (docked) {
+      if (panel.parentElement !== stage) stage.appendChild(panel);
+      delete panel.dataset.drawer;
+      panel.classList.remove('drawer-open');
+      panel.inert = false;
+    } else {
+      if (panel.parentElement !== document.body) {
+        if (backdrop && backdrop.parentElement === document.body) {
+          backdrop.insertAdjacentElement('afterend', panel);
+        } else {
+          document.body.appendChild(panel);
+        }
+      }
+      panel.dataset.drawer = '1';
+      panel.classList.toggle('drawer-open', isDrawerVis);
+      panel.inert = !isDrawerVis;
+    }
+  }
   if (backdrop) {
     backdrop.classList.toggle('open', isDrawerVis);
     backdrop.setAttribute('aria-hidden', isDrawerVis ? 'false' : 'true');
@@ -5190,7 +5237,8 @@ function navigateTo(page, opts = {}) {
   closeAllDriveSyncPickers();
   closeWarmupPicker(false);
   setAccountPickerOpen(false);
-  closeZenoSelect(false);
+  closeStudioSelect(false);
+  if (typeof closeRandomPicker === 'function') closeRandomPicker(false);
 
   const meta = PAGE_META[page] || PAGE_META.image;
   const hTitle = document.getElementById('pageHeaderTitle');
@@ -5754,7 +5802,7 @@ function closeRandomPicker(restoreFocus = false) {
   const btn = document.getElementById('randomRunBtn');
   if (btn) btn.setAttribute('aria-expanded', 'false');
   if (picker) picker.classList.remove('open');
-
+  if (restoreFocus && btn) btn.focus({ preventScroll: true });
 }
 
 function toggleRandomPicker() {
@@ -6334,7 +6382,7 @@ async function submitAccountOauthCode() {
 
 document.addEventListener('pointerdown', (e) => {
   const box = document.getElementById('warmupPicker');
-  if (box && box.classList.contains('open') && !e.target.closest('#warmupPicker') && !e.target.closest('#warmupG4Btn')) {
+  if (box && box.classList.contains('open') && !e.target.closest('#warmupPicker') && !e.target.closest('[data-power-btn="warmup"]')) {
     setWarmupPickerOpen(false, false);
   }
   const abox = document.getElementById('accountPicker');
@@ -6344,7 +6392,7 @@ document.addEventListener('pointerdown', (e) => {
   if (document.querySelector('.drive-sync-picker.open') && !e.target.closest('.drive-sync-anchor')) {
     closeAllDriveSyncPickers();
   }
-});
+}, { passive: true });
 document.addEventListener('change', e => {
   const el = e.target.closest('[data-warmup-target]');
   if (!el) return;
@@ -8360,7 +8408,7 @@ async function openSettingsDialog() {
   navigateTo('settings');
   await ensureSettingsPagePopulated(true);
 }
-function closeSettingsDialog() { closeZenoSelect(false); }
+function closeSettingsDialog() { closeStudioSelect(false); }
 async function saveStudioSettings() {
   if (settingsSaving) return;
   const saveBtn = document.getElementById('saveSettingsBtn');
@@ -8808,12 +8856,6 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
-document.addEventListener('pointerdown', (e) => {
-  const wp = document.getElementById('warmupPicker');
-  if (wp && wp.classList.contains('open') && !wp.contains(e.target) && !e.target.closest('[data-power-btn="warmup"]')) closeWarmupPicker(false);
-  const ap = document.getElementById('accountPicker');
-  if (ap && ap.classList.contains('open') && !ap.contains(e.target) && !e.target.closest('#cuBadge')) setAccountPickerOpen(false);
-}, { passive: true });
 
 document.addEventListener('keydown', (e) => {
   const control = e.target.closest('[role="button"][data-action]');

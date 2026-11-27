@@ -338,6 +338,22 @@ def main():
             assert '_yield_llm_vram_if_needed' in (ROOT / 'remote_image.py').read_text(encoding='utf-8')
             assert '"/unload"' in (ROOT / 'remote_llm.py').read_text(encoding='utf-8')
             print('PASS v0.2.8 Colab Public API, A100-HM fallback chain, quota project resolution & VRAM swap guard')
+
+            # v0.2.9 回归：NO_RUNTIMES 换新 UUID 重试、视频显存自适应、桌面顶栏防裁切、移动端抽屉挂载与滚动/横滑、零未定义函数引用
+            assert '"no_runtimes"' in (ROOT / 'colab_startup.py').read_text(encoding='utf-8')
+            assert 'last_no_runtimes_at' in (ROOT / 'colab-ai').read_text(encoding='utf-8')
+            assert '"http://127.0.0.1:8189/unload"' in (ROOT / 'remote_video.py').read_text(encoding='utf-8')
+            assert 'closeZenoSelect' not in ui_txt, 'stale closeZenoSelect ReferenceError in UI'
+            for m029 in (
+                'min-width: 218px;', 'min-width: 152px;', 'panel.dataset.drawer = \'1\'',
+                'width: calc(100vw - 16px);', 'touch-action: pan-x pan-y;',
+                '.task-item-wrap.paused .task-badge'
+            ):
+                assert m029 in ui_txt, f'missing v0.2.9 UI marker: {m029}'
+            _style_m = _re.search(r'<style>(.*)</style>', ui_txt, _re.S)
+            _clean_css = _re.sub(r'/\*.*?\*/', '', _style_m.group(1), flags=_re.S)
+            assert _clean_css.count('{') == _clean_css.count('}'), 'unbalanced CSS braces in ui/panel_ui.html'
+            print('PASS v0.2.9 NO_RUNTIMES retry, video VRAM guard, mobile drawer portal, desktop badge sizing & zero ReferenceError')
     print('ALL SMOKE TESTS PASSED')
 
 

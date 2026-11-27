@@ -345,9 +345,29 @@ def ensure_video_models_and_comfy(port: int = 8188):
         except Exception:
             return False
 
+    try:
+        _vout = subprocess.check_output(
+            ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+            text=True, timeout=5,
+        ).strip().splitlines()
+        _vgb = float(_vout[0].strip()) / 1024.0 if _vout else 96.0
+    except Exception:
+        _vgb = 96.0
+    if _vgb < 60.0:
+        try:
+            _ul_req = urllib.request.Request(
+                "http://127.0.0.1:8189/unload",
+                data=b"{}",
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            urllib.request.urlopen(_ul_req, timeout=180).read()
+        except Exception:
+            pass
+    _vram_args = ["--highvram"] if _vgb >= 60.0 else ([] if _vgb >= 28.0 else ["--lowvram"])
     _ensure_http_service(
         port, healthy,
-        [sys.executable, "main.py", "--listen", "127.0.0.1", "--port", str(port), "--highvram"],
+        [sys.executable, "main.py", "--listen", "127.0.0.1", "--port", str(port), *_vram_args],
         "/content/comfyui.log", 110, "main.py.*--port " + str(port), cwd=COMFY_DIR
     )
     ensure_tunnel(port)
