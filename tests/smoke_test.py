@@ -317,6 +317,27 @@ def main():
             assert ui_txt == panel.HTML_PAGE, 'ui/panel_ui.html out of sync with web_panel.HTML_PAGE'
             assert '_fatal_conn_err' in (ROOT / 'colab-ai').read_text(encoding='utf-8')
             print('PASS v0.2.7 unified layout, fixed top-bar widths, works search min-width, exec hang guard & CSP SHA-256')
+
+            # v0.2.8 回归：Colab Public API 规格解析、endpoint 提取、配额项目解析、候选回退链与显存自适应
+            assert colab_startup.parse_gpu_spec('G4') == ('G4', False, 'G4')
+            assert colab_startup.parse_gpu_spec('a100-hm') == ('A100', True, 'A100-HM')
+            assert colab_startup.parse_gpu_spec('A100-80G') == ('A100', True, 'A100-HM')
+            assert colab_startup.extract_endpoint_from_proxy_url(
+                'https://8080-gpu-a100-s-abc123-a.us-west1-0.prod.colab.dev/', ''
+            ) == 'gpu-a100-s-abc123'
+            assert colab_startup.extract_endpoint_from_proxy_url('', 'runtimes/r-1234') == 'r-1234'
+            assert colab_startup.normalize_proxy_url('https://x.colab.dev///') == 'https://x.colab.dev'
+            with mock.patch.dict(os.environ, {'COLABBB_QUOTA_PROJECT': 'demo-proj-123'}):
+                assert colab_accounts.resolve_quota_project('u@example.com') == 'demo-proj-123'
+            assert cli._gpu_display_label('A100-HM') == 'A100-80GB'
+            assert cli._gpu_display_label('A100') == 'A100-40GB'
+            assert cli._gpu_candidate_chain('G4')[:4] == ['G4', 'A100-HM', 'A100', 'H100']
+            assert cli._gpu_candidate_chain('H100') == ['H100']
+            assert 'colaboratory.googleapis.com' in (ROOT / 'colab_startup.py').read_text(encoding='utf-8')
+            assert 'list_effective_assignments' in (ROOT / 'web_panel.py').read_text(encoding='utf-8')
+            assert '_yield_llm_vram_if_needed' in (ROOT / 'remote_image.py').read_text(encoding='utf-8')
+            assert '"/unload"' in (ROOT / 'remote_llm.py').read_text(encoding='utf-8')
+            print('PASS v0.2.8 Colab Public API, A100-HM fallback chain, quota project resolution & VRAM swap guard')
     print('ALL SMOKE TESTS PASSED')
 
 

@@ -1,4 +1,4 @@
-# Colabbb v0.2.7
+# Colabbb v0.2.8
 
 面向个人自托管的 AI 视觉创作工作台：中文 Web 面板管理远端 GPU 会话、多账号并发余额与防双开切换、二阶段 3K 生图、24fps 声画视频、提示词对话与作品库。包含深浅色主题、工作流参数配置、透明品牌图标、独立 FIFO 队列、随机灵感、取消任务与闲置关机租约。
 
@@ -37,6 +37,8 @@ docker compose exec -it colabbb python3 /app/web_panel.py --init-admin --usernam
 ```
 
 根据上游 CLI 的浏览器授权提示完成登录；管理员密码至少 12 字符，没有默认密码。未初始化时仅公开登录页/图标，API 全部拒绝访问。需要账户配额、网络与兼容 GPU 才能运行远端任务。
+
+> **关于 Colab Public API（v0.2.8）**：自 2026 年 11 月起 Google 逐步收紧旧 `/tun/m/assign` 接口，Colabbb v0.2.8 起全链路默认采用官方 `colaboratory.googleapis.com` Public API，并双向兼容浏览器创建的会话。首次开机时会自动发现你 Google 账号下已有的免费 GCP 项目并启用 `colaboratory.googleapis.com`（结果缓存至 `accounts.json`）；若你的 Google 账号从未建过任何 GCP 项目，只需去 [Google Cloud Console](https://console.cloud.google.com/) 新建一个免费空项目（无需绑卡），或在 `.env` 中通过 `COLABBB_QUOTA_PROJECT` 手动指定项目 ID 即可。
 
 默认面板仅发布在宿主机 `127.0.0.1:17860`。请经受控的 HTTPS 反向代理或 VPN 访问，不要在公网明文 HTTP 输入密码。可用 `COLABBB_BIND_IP` / `COLABBB_PANEL_PORT` 调整宿主发布地址/端口；容器内始终监听 `17860`。反代应覆盖而非透传伪造的 `X-Forwarded-For` / `X-Forwarded-Proto`，并移除外部 `X-G4-Internal` 头。
 
@@ -103,7 +105,7 @@ docker compose up -d --build --pull never
 
 ## 创作与配置
 
-- **多账号共存与安全切换**：点击面板顶栏 CU 余额胶囊展开账号管理浮层（或执行 `colab-ai accounts` / `colab-ai switch <email>`），支持面板内在线添加 Google OAuth 新账号、并发查询全部账号实时 CU 余额与总和，以及切换前自动检测并强制关机释放原账号实例防止后台双边扣费。
+- **多账号共存、自动轮换与 GPU 阶梯回退**：点击面板顶栏 CU 余额胶囊展开账号管理浮层（或执行 `colab-ai accounts` / `colab-ai switch <email>`），支持面板内在线添加 Google OAuth 新账号、并发查询全部账号实时 CU 余额与总和，以及切换前自动检测并强制关机释放原账号实例防止后台双边扣费。开机阶段通过官方 Colab Public API 幂等申请算力，支持多账号自动轮换与 `G4 -> A100-80GB (A100-HM) -> A100-40GB -> H100` 阶梯回退（可通过 `COLAB_GPU_FALLBACKS`、`COLAB_MULTI_ACCOUNT_FAILOVER` 调整），并在显存低于 60 GiB 的 GPU 上自动启用 ComfyUI / LLM 显存协同防 OOM。
 - **图片**：兼容键 `v5_int8`，竖/横/方画幅，三档步数与默认二阶段 3K，支持参考图（上传素材与历史生图按时间倒序混排并支持横滑无限懒加载）。
 - **视频**：24fps 声画输出，832p / 1088p / 2K，三种画幅，可选首帧参考图。
 - **提示词大师**：写实摄影/电影视觉描述，保留 `<提示词>...</提示词>` 提取约定；系统提示词、采样与工作流参数保存于 `/data/state/studio_settings.json`。

@@ -309,7 +309,17 @@ MODULES = {
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 from idle_guard import Guard, IdleError
-from colab_startup import PendingError, read_pending
+from colab_startup import PendingError, parse_gpu_spec, read_pending
+
+DEFAULT_GPU_FALLBACKS = tuple(
+    parse_gpu_spec(x)[2]
+    for x in os.environ.get("COLAB_GPU_FALLBACKS", "A100-HM,A100,H100").split(",")
+    if x.strip()
+)
+GPU_PREF_ORDER = tuple(dict.fromkeys(
+    parse_gpu_spec(x)[0] for x in [DEFAULT_GPU, *DEFAULT_GPU_FALLBACKS] if parse_gpu_spec(x)[0]
+))
+MULTI_ACCOUNT_FAILOVER = os.environ.get("COLAB_MULTI_ACCOUNT_FAILOVER", "1").strip().lower() not in ("0", "false", "no", "off")
 
 
 def _resolve_colab_python() -> str:
@@ -438,7 +448,7 @@ def _local_endpoint(session):
     try:
         with open(os.path.expanduser("~/.config/colab-cli/sessions.json")) as fh:
             value = json.load(fh).get(session, {}).get("endpoint")
-        return value if isinstance(value, str) and re.fullmatch(r"(?:gpu|cpu|tpu)-[A-Za-z0-9_-]{1,160}", value) else None
+        return value if isinstance(value, str) and re.fullmatch(r"(?:gpu|cpu|tpu|m|r)-[A-Za-z0-9_-]{1,160}", value) else None
     except (OSError, ValueError, TypeError, AttributeError):
         return None
 
@@ -534,27 +544,39 @@ def cmd_kernel_keepalive(session: str, expected_gen: str = None, cooldown_sec: i
             return
         helper_code = (
             "import json, sys, requests\n"
+            f"sys.path.insert(0, {BASE_DIR!r})\n"
             "from colab_cli.common import state\n"
             "from colab_cli.runtime import ColabRuntime\n"
+            "import colab_accounts\n"
+            "from colab_startup import _creds_from_client, list_effective_assignments, normalize_proxy_url, verified_client\n"
             "sess_name = sys.argv[1]\n"
-            "assignments = state.client.list_assignments()\n"
+            "cl, acct = verified_client()\n"
+            "qp = colab_accounts.resolve_quota_project(acct['email'], _creds_from_client(cl))\n"
+            "assignments = list_effective_assignments(cl, qp)\n"
             "if not assignments:\n"
             "    print('KA_RESULT=empty')\n"
             "    raise SystemExit(0)\n"
-            "by_ep = {a.endpoint: a for a in assignments}\n"
+            "by_ep = {a.endpoint: a for a in assignments if a.endpoint}\n"
+            "by_url = {normalize_proxy_url(a.runtime_proxy_info.url): a for a in assignments if normalize_proxy_url(a.runtime_proxy_info.url)}\n"
             "cur = state.store.get(sess_name)\n"
-            "target = by_ep.get(cur.endpoint) if (cur and cur.endpoint in by_ep) else None\n"
+            "target = None\n"
+            "if cur:\n"
+            "    target = by_ep.get(cur.endpoint) or by_url.get(normalize_proxy_url(cur.url))\n"
             "if target is None:\n"
-            "    for a in assignments:\n"
-            "        if a.accelerator.value.upper() == 'G4':\n"
-            "            target = a\n"
+            f"    for pref in {GPU_PREF_ORDER!r}:\n"
+            "        for a in assignments:\n"
+            "            if a.accelerator.value.upper() == pref:\n"
+            "                target = a\n"
+            "                break\n"
+            "        if target is not None:\n"
             "            break\n"
             "    if target is None:\n"
             "        target = assignments[0]\n"
             "url = target.runtime_proxy_info.url\n"
             "tok = target.runtime_proxy_info.token\n"
             "ep = target.endpoint\n"
-            "if cur and cur.endpoint == ep:\n"
+            "if cur and (cur.endpoint == ep or normalize_proxy_url(cur.url) == normalize_proxy_url(url)):\n"
+            "    cur.endpoint = ep\n"
             "    cur.token = tok\n"
             "    cur.url = url\n"
             "    cur.token_expires_at = target.runtime_proxy_info.expires_at()\n"
@@ -687,76 +709,256 @@ def _startup_call(action, lock, session, gpu):
     return {"status": "blocked", "message": "分配子进程结果未确认；保留原请求身份，请稍后再点开机核对。"}
 
 
-def _recover_start_locked(lock, session, gpu):
+def _gpu_display_label(spec: str) -> str:
+    _, hm, canon = parse_gpu_spec(spec)
+    if canon == "A100-HM":
+        return "A100-80GB"
+    if canon == "A100" and not hm:
+        return "A100-40GB"
+    return canon
+
+
+def _gpu_candidate_chain(primary_gpu: str) -> list:
+    p = parse_gpu_spec(primary_gpu or DEFAULT_GPU)[2]
+    if p != parse_gpu_spec(DEFAULT_GPU)[2]:
+        return [p]
+    chain = [p]
+    for fb in DEFAULT_GPU_FALLBACKS:
+        if fb and fb not in chain:
+            chain.append(fb)
+    return chain
+
+
+def _reconcile_and_clear_pending_locked(lock, session: str, cur_gpu: str, settle_sec: float = 3.0):
+    if settle_sec > 0:
+        buf_deadline = time.monotonic() + settle_sec
+        while time.monotonic() < buf_deadline:
+            _check_generation(session)
+            time.sleep(min(0.25, max(0.0, buf_deadline - time.monotonic())))
+    if _auto_attach_remote_session_locked(session, lock):
+        _set_start_pending(lock, False)
+        return cur_gpu
+    recheck = _startup_call("query", lock, session, cur_gpu)
+    _check_generation(session)
+    if recheck["status"] == "allocated":
+        _set_start_pending(lock, False)
+        return cur_gpu
+    if recheck["status"] != "empty":
+        raise SystemExit("[colab-ai] " + recheck.get("message", "切卡/收尾复核失败；保留启动保护。"))
+    _set_start_pending(lock, False)
+    return None
+
+
+def _short_acct_tag(email: str) -> str:
+    if not email:
+        return "acct"
+    loc = email.split("@", 1)[0]
+    return loc[-4:] if len(loc) > 6 else loc
+
+
+def _recover_start_locked(lock, session, gpu) -> str:
+    import colab_accounts as _ca
+
+    chain = _gpu_candidate_chain(gpu)
     try:
-        read_pending(lock, session, gpu)
+        existing_pending = read_pending(lock, session, gpu=None)
     except (PendingError, OSError) as exc:
         raise SystemExit("[colab-ai] " + (str(exc) if isinstance(exc, PendingError) else "启动保护读取失败；拒绝创建。")) from None
-    result = _startup_call("prepare", lock, session, gpu)
-    if result["status"] != "prepared":
-        raise SystemExit("[colab-ai] " + result.get("message", "启动身份核对失败；保留保护。"))
-    print(f"[colab-ai] 正在核对/恢复 Colab {gpu} 分配（同一请求身份）...", flush=True)
-    backoff_schedule = (15.0, 15.0, 20.0, 30.0)
-    max_attempts = len(backoff_schedule)
-    for attempt in range(max_attempts):
-        _check_generation(session)
-        pending = read_pending(lock, session, gpu)
-        min_gap = backoff_schedule[attempt]
-        delay = min(min_gap, max(0.0, pending["last_post_at"] + min_gap - time.time())) if pending["last_post_at"] > 0 else 0.0
-        if delay:
-            print(f"[colab-ai] Google 分配尚未确认，等待 {int(round(delay))} 秒后核对重试 ({attempt + 1}/{max_attempts})...", flush=True)
-            deadline = time.monotonic() + delay
-            while time.monotonic() < deadline:
-                _check_generation(session)
-                time.sleep(min(0.25, max(0, deadline - time.monotonic())))
-        _check_generation(session)
-        if _auto_attach_remote_session_locked(session):
+
+    reg = _ca.load_registry()
+    initial_email = (reg.get("active_email") or "").strip().lower()
+    active_email = initial_email
+
+    # Always reconcile any leftover unconfirmed pending record first so a prior
+    # end-of-chain 503 or killed process never pins subsequent starts to a fallback GPU.
+    if existing_pending:
+        p_gpu = parse_gpu_spec(existing_pending.get("gpu") or "")[2]
+        last_t = float(existing_pending.get("last_post_at") or 0.0)
+        wait_settle = max(0.0, 3.5 - max(0.0, time.time() - last_t)) if last_t > 0 else 0.0
+        print(f"[colab-ai] 正在权威核对上次未确认的 {_gpu_display_label(p_gpu)} 请求状态...", flush=True)
+        late = _reconcile_and_clear_pending_locked(lock, session, p_gpu, settle_sec=wait_settle)
+        if late:
+            return _gpu_display_label(late)
+        print("[colab-ai] 上次残留请求已确认无运行实例并清理启动锁，重新按最优顺序分配...", flush=True)
+
+    alt_accounts = []
+    is_default_gpu_request = (parse_gpu_spec(gpu or DEFAULT_GPU)[2] == parse_gpu_spec(DEFAULT_GPU)[2])
+    if MULTI_ACCOUNT_FAILOVER and is_default_gpu_request and active_email:
+        try:
+            alt_accounts = _ca.find_other_accounts_for_failover(min_balance=1.0)
+        except Exception:
+            alt_accounts = []
+
+        for alt in alt_accounts:
+            if alt.get("has_running"):
+                sw_st, _ = _ca.switch_account_under_start_lock(lock, alt["email"], session)
+                if sw_st == "current_has_instance" and _auto_attach_remote_session_locked(session, lock):
+                    _set_start_pending(lock, False)
+                    return _gpu_display_label(chain[0])
+                if sw_st in ("switched", "already_active"):
+                    active_email = alt["email"]
+                    print(f"[colab-ai] 检测到算力账号 {active_email} 已有活跃实例，已自动切换接管...", flush=True)
+                    if _auto_attach_remote_session_locked(session, lock):
+                        _set_start_pending(lock, False)
+                        accs = alt.get("accelerators") or [chain[0]]
+                        return _gpu_display_label(accs[0])
+
+    plan = []
+    if alt_accounts and active_email:
+        alt_email = alt_accounts[0]["email"]
+        primary_spec = chain[0]
+        fallbacks = chain[1:]
+        plan.append((active_email, primary_spec, (15.0, 15.0)))
+        plan.append((alt_email, primary_spec, (15.0, 15.0)))
+        for fb in fallbacks:
+            sched = (15.0, 15.0) if fb == "A100" else (15.0,)
+            plan.append((alt_email, fb, sched))
+        for fb in fallbacks:
+            if fb == "H100":
+                continue
+            plan.append((active_email, fb, (15.0,)))
+    else:
+        for idx, spec in enumerate(chain):
+            if idx == 0 or spec == "A100" or len(chain) == 1:
+                sched = (15.0, 15.0)
+            else:
+                sched = (15.0,)
+            plan.append((active_email, spec, sched))
+
+    tried_summary = []
+    skipped_accounts = set()
+    multi_acct_mode = len({em for em, _, _ in plan if em}) > 1
+
+    for step_idx, (step_email, cur_gpu, backoff_schedule) in enumerate(plan):
+        if step_email and step_email in skipped_accounts:
+            continue
+        has_next = (step_idx + 1) < len(plan)
+        disp_gpu = _gpu_display_label(cur_gpu)
+
+        if step_email and active_email and step_email != active_email:
+            _check_generation(session)
+            sw_st, sw_msg = _ca.switch_account_under_start_lock(lock, step_email, session)
+            if sw_st == "current_has_instance":
+                if _auto_attach_remote_session_locked(session, lock):
+                    _set_start_pending(lock, False)
+                    return disp_gpu
+            if sw_st not in ("switched", "already_active"):
+                print(f"[colab-ai] 跳过备用账号 {step_email}（{sw_msg}）", flush=True)
+                skipped_accounts.add(step_email)
+                continue
+            active_email = step_email
+            print(f"[colab-ai] 已自动切换算力账号 -> {active_email}，继续尝试 {disp_gpu} ...", flush=True)
+            if _auto_attach_remote_session_locked(session, lock):
+                _set_start_pending(lock, False)
+                return disp_gpu
+
+        acct_prefix = f"{_short_acct_tag(active_email)}:" if multi_acct_mode and active_email else ""
+        result = _startup_call("prepare", lock, session, cur_gpu)
+        if result["status"] != "prepared":
+            raise SystemExit("[colab-ai] " + result.get("message", "启动身份核对失败；保留保护。"))
+        print(f"[colab-ai] 正在请求 Colab {disp_gpu} 分配（账号 {active_email or '默认'}）...", flush=True)
+
+        max_attempts = len(backoff_schedule)
+        for attempt in range(max_attempts):
+            _check_generation(session)
+            pending = read_pending(lock, session, cur_gpu)
+            min_gap = backoff_schedule[attempt]
+            delay = min(min_gap, max(0.0, pending["last_post_at"] + min_gap - time.time())) if pending["last_post_at"] > 0 else 0.0
+            if delay:
+                print(f"[colab-ai] Google {disp_gpu} 分配尚未确认，等待 {int(round(delay))} 秒后核对重试 ({attempt + 1}/{max_attempts})...", flush=True)
+                deadline = time.monotonic() + delay
+                while time.monotonic() < deadline:
+                    _check_generation(session)
+                    time.sleep(min(0.25, max(0, deadline - time.monotonic())))
+            _check_generation(session)
+            if _auto_attach_remote_session_locked(session, lock):
+                _set_start_pending(lock, False)
+                return disp_gpu
+            result = _startup_call("attempt", lock, session, cur_gpu)
+            _check_generation(session)
+            if result["status"] == "allocated":
+                return disp_gpu
+            err_kind = result.get("err_kind") or (f"HTTP {result['http_status']}" if result.get("http_status") else "")
+            err_note = f"（{err_kind}）" if err_kind else ""
+            print(f"[colab-ai] Google {disp_gpu} 分配未确认{err_note}，正在权威核对已有实例；不会另建请求...", flush=True)
+            if _auto_attach_remote_session_locked(session, lock):
+                _set_start_pending(lock, False)
+                return disp_gpu
+            queried = _startup_call("query", lock, session, cur_gpu)
+            _check_generation(session)
+            if queried["status"] == "allocated":
+                return disp_gpu
+            if queried["status"] != "empty":
+                raise SystemExit("[colab-ai] " + queried.get("message", "请求身份核对失败；保留启动保护。"))
+            if result["status"] == "rejected":
+                _set_start_pending(lock, False)
+                tried_summary.append(f"{acct_prefix}{disp_gpu}{err_note}")
+                if has_next:
+                    print(f"[colab-ai] Google 拒绝了 {disp_gpu} 分配请求{err_note}，已确认无实例，切换下一候选...", flush=True)
+                    break
+                break
+            if result["status"] != "retryable":
+                message = result.get("message") or (
+                    f"{disp_gpu} 分配被拒绝或响应异常{err_note}；保留原请求身份，请稍后再点开机核对，不会盲目新建。"
+                )
+                raise SystemExit("[colab-ai] " + message)
+            if attempt == max_attempts - 1:
+                late = _reconcile_and_clear_pending_locked(lock, session, cur_gpu, settle_sec=3.0)
+                if late:
+                    return _gpu_display_label(late)
+                tried_summary.append(f"{acct_prefix}{disp_gpu}{err_note}")
+                if has_next:
+                    print(
+                        f"[colab-ai] {acct_prefix}{disp_gpu} 分配未成功{err_note}，已双重核对确认无实例并清理启动锁，切换下一候选...",
+                        flush=True,
+                    )
+                break
+
+    if initial_email and active_email and active_email != initial_email:
+        sw_back, _ = _ca.switch_account_under_start_lock(lock, initial_email, session)
+        if sw_back == "current_has_instance" and _auto_attach_remote_session_locked(session, lock):
             _set_start_pending(lock, False)
-            return
-        result = _startup_call("attempt", lock, session, gpu)
-        _check_generation(session)
-        if result["status"] == "allocated":
-            return
-        err_kind = result.get("err_kind") or (f"HTTP {result['http_status']}" if result.get("http_status") else "")
-        err_note = f"（{err_kind}）" if err_kind else ""
-        print(f"[colab-ai] Google 分配未确认{err_note}，正在权威核对已有实例；不会另建请求...", flush=True)
-        if _auto_attach_remote_session_locked(session):
-            _set_start_pending(lock, False)
-            return
-        queried = _startup_call("query", lock, session, gpu)
-        _check_generation(session)
-        if queried["status"] == "allocated":
-            return
-        if queried["status"] != "empty":
-            raise SystemExit("[colab-ai] " + queried.get("message", "请求身份核对失败；保留启动保护。"))
-        if result["status"] == "rejected":
-            _set_start_pending(lock, False)
-            code_hint = f" (HTTP {result['http_status']})" if result.get("http_status") else ""
-            raise SystemExit(f"[colab-ai] Google 拒绝了本次分配请求{code_hint}；已核对确认无运行中实例并自动清理启动保护。")
-        if result["status"] != "retryable" or attempt == max_attempts - 1:
-            message = result.get("message") or (
-                f"Google 连续 {max_attempts} 次分配未成功{err_note}（通常为 GPU 节点池拥挤 503）；本次有限恢复已结束，请稍后再试或切换账号。"
-                if result["status"] == "retryable" else
-                f"分配被拒绝或响应异常{err_note}；保留原请求身份，请稍后再点开机核对，不会盲目新建。")
-            raise SystemExit("[colab-ai] " + message)
+            return _gpu_display_label(chain[0])
+
+    tried_txt = " -> ".join(tried_summary) if tried_summary else _gpu_display_label(chain[0])
+    raise SystemExit(
+        f"[colab-ai] Google 分配全部未成功（已依次尝试 {tried_txt}）；已核对确认无运行实例并自动清理启动锁，请稍后再试。"
+    )
 
 
 def auto_attach_remote_session(session: str) -> bool:
     with session_start_lock(session) as lock:
-        attached = _auto_attach_remote_session_locked(session)
+        attached = _auto_attach_remote_session_locked(session, lock)
         if attached:
             _set_start_pending(lock, False)
             start_idle_watcher(session, DEFAULT_IDLE_MIN)
         return attached
 
 
-def _auto_attach_remote_session_locked(session: str) -> bool:
+def _auto_attach_remote_session_locked(session: str, lock) -> bool:
+    try:
+        read_pending(lock, session, allow_legacy=True)
+    except (PendingError, OSError) as exc:
+        raise SystemExit("[colab-ai] " + (str(exc) if isinstance(exc, PendingError) else "启动保护读取失败；拒绝操作。")) from None
     code = f'''
+import sys
+sys.path.insert(0, {BASE_DIR!r})
 from colab_cli.common import state
 from colab_cli.state import SessionState
-import json
+import colab_accounts
+from colab_startup import _creds_from_client, verified_client, read_pending, PendingError, list_effective_assignments, normalize_proxy_url
+import json, os
+try:
+    with os.fdopen(os.dup({lock.fileno()}), "r+") as startup_lock:
+        pending = read_pending(startup_lock, {session!r}, allow_legacy=True)
+        cl, acct = verified_client(pending if (pending and not pending.get("legacy")) else None)
+        state._client = cl
+except PendingError as exc:
+    print("COLAB_AI_IDENTITY_ERROR=" + str(exc))
+    raise SystemExit(4)
 
-assignments = state.client.list_assignments()
+qp = colab_accounts.resolve_quota_project(acct["email"], _creds_from_client(cl))
+assignments = list_effective_assignments(state.client, qp)
 if not isinstance(assignments, list):
     raise RuntimeError("Invalid assignments response")
 print("COLAB_AI_ASSIGNMENTS_JSON=" + json.dumps([a.endpoint for a in assignments]), flush=True)
@@ -764,10 +966,13 @@ if not assignments:
     print("COLAB_AI_ASSIGNMENTS_EMPTY")
     raise SystemExit(3)
 
-by_ep = {{a.endpoint: a for a in assignments}}
+by_ep = {{a.endpoint: a for a in assignments if a.endpoint}}
+by_url = {{normalize_proxy_url(a.runtime_proxy_info.url): a for a in assignments if normalize_proxy_url(a.runtime_proxy_info.url)}}
 cur = state.store.get({session!r})
-if cur and cur.endpoint in by_ep:
-    a = by_ep[cur.endpoint]
+matched_cur = (by_ep.get(cur.endpoint) or by_url.get(normalize_proxy_url(cur.url))) if cur else None
+if cur and matched_cur is not None:
+    a = matched_cur
+    cur.endpoint = a.endpoint
     cur.token = a.runtime_proxy_info.token
     cur.url = a.runtime_proxy_info.url
     cur.token_expires_at = a.runtime_proxy_info.expires_at()
@@ -776,9 +981,12 @@ if cur and cur.endpoint in by_ep:
     raise SystemExit(0)
 
 target = None
-for a in assignments:
-    if a.accelerator.value.upper() == "G4":
-        target = a
+for pref in {GPU_PREF_ORDER!r}:
+    for a in assignments:
+        if a.accelerator.value.upper() == pref:
+            target = a
+            break
+    if target is not None:
         break
 if target is None:
     target = assignments[0]
@@ -801,18 +1009,23 @@ print(f"ATTACHED:{{s.endpoint}}:{{s.accelerator}}")
     try:
         res = subprocess.run(
             [_resolve_colab_python(), "-c", code],
-            capture_output=True, text=True, timeout=15,
+            pass_fds=(lock.fileno(),),
+            capture_output=True, text=True, timeout=20,
         )
     except (subprocess.TimeoutExpired, OSError) as exc:
         _lifecycle_event("assignment_query_end", result="error", old_endpoint=old_endpoint, error_type=type(exc).__name__)
         raise SystemExit("[colab-ai] 状态查询失败：远端会话查询超时或无法运行；未确认无实例，拒绝创建。") from None
     lines = (res.stdout or "").splitlines()
+    if res.returncode == 4:
+        id_err = [x.split("=", 1)[1] for x in lines if x.startswith("COLAB_AI_IDENTITY_ERROR=")]
+        _lifecycle_event("assignment_query_end", result="identity_error", old_endpoint=old_endpoint, returncode=4)
+        raise SystemExit("[colab-ai] " + (id_err[-1] if id_err else "当前凭据与算力账号身份不一致；拒绝操作。"))
     endpoints = None
     for line in lines:
         if line.startswith("COLAB_AI_ASSIGNMENTS_JSON="):
             try:
                 candidate = json.loads(line.split("=", 1)[1])
-                if isinstance(candidate, list) and all(isinstance(ep, str) and re.fullmatch(r"(?:gpu|cpu|tpu)-[A-Za-z0-9_-]{1,160}", ep) for ep in candidate):
+                if isinstance(candidate, list) and all(isinstance(ep, str) and re.fullmatch(r"(?:gpu|cpu|tpu|m|r)-[A-Za-z0-9_-]{1,160}", ep) for ep in candidate):
                     endpoints = candidate
             except (TypeError, ValueError):
                 pass
@@ -890,7 +1103,7 @@ def ensure_session(session: str, gpu: str, idle_min: int, allow_create: bool = T
     ensure_port_proxy()
     with session_start_lock(session) as lock:
         _check_generation()
-        if _auto_attach_remote_session_locked(session):
+        if _auto_attach_remote_session_locked(session, lock):
             _set_start_pending(lock, False)
             start_idle_watcher(session, idle_min)
             return
@@ -900,7 +1113,7 @@ def ensure_session(session: str, gpu: str, idle_min: int, allow_create: bool = T
         _check_generation(session)
         _lifecycle_event("session_decision", decision="recover_or_new", old_endpoint=_local_endpoint(session))
         try:
-            _recover_start_locked(lock, session, gpu)
+            allocated_gpu = _recover_start_locked(lock, session, gpu) or _gpu_display_label(gpu)
         except (Exception, SystemExit):
             start_idle_watcher(session, idle_min)
             raise
@@ -909,7 +1122,7 @@ def ensure_session(session: str, gpu: str, idle_min: int, allow_create: bool = T
         ready = False
         for _attempt in range(8):
             time.sleep(2.5)
-            if not _auto_attach_remote_session_locked(session):
+            if not _auto_attach_remote_session_locked(session, lock):
                 continue
             _set_start_pending(lock, False)
             start_idle_watcher(session, idle_min)
@@ -936,7 +1149,7 @@ def ensure_session(session: str, gpu: str, idle_min: int, allow_create: bool = T
         start_idle_watcher(session, idle_min)
         if not ready:
             raise SystemExit("[colab-ai] 实例已创建，但 Kernel 就绪探测耗尽；未就绪，不会再次创建。")
-        print(f"[colab-ai] {gpu} 已就绪（已启用 {idle_min} 分钟闲置自动关机保护）。", flush=True)
+        print(f"[colab-ai] {allocated_gpu} 已就绪（已启用 {idle_min} 分钟闲置自动关机保护）。", flush=True)
 
 
 def prepare_remote_args(module: str, raw_args: list, session: str) -> list:
@@ -1763,16 +1976,21 @@ def cmd_stop(session: str, _claim=None):
                 print("[lifecycle] stop requested; automatic retry fenced", flush=True)
                 target_endpoint = _local_endpoint(session)
                 _lifecycle_event("stop_call_begin", call_type=call_type, generation=token, endpoint=target_endpoint, operation="sdk_stop_shutdown_and_unassign")
+                stop_code = (
+                    f"import sys; sys.path.insert(0, {BASE_DIR!r}); "
+                    "from colab_startup import stop_active_runtimes_everywhere; "
+                    f"stop_active_runtimes_everywhere({session!r})"
+                )
                 try:
-                    subprocess.run([COLAB_BIN, "stop", "-s", session], check=True, timeout=90)
+                    subprocess.run([_resolve_colab_python(), "-c", stop_code], check=True, timeout=90)
                 except (Exception, SystemExit) as exc:
                     _lifecycle_event("stop_call_end", call_type=call_type, generation=token, endpoint=target_endpoint, result="unconfirmed", error_type=type(exc).__name__)
                     raise
                 _lifecycle_event("stop_call_end", call_type=call_type, generation=token, endpoint=target_endpoint, result="returned_success")
-                if _auto_attach_remote_session_locked(session):
+                if _auto_attach_remote_session_locked(session, lock):
                     raise IdleError("关机后实例仍在，未确认释放")
 
-            if _auto_attach_remote_session_locked(session):
+            if _auto_attach_remote_session_locked(session, lock):
                 _stop_attached_now()
 
             try:
@@ -1785,7 +2003,7 @@ def cmd_stop(session: str, _claim=None):
                     _stop_attached_now()
                     queried = _startup_call("query", lock, session, pending["gpu"])
                 if queried["status"] == "empty":
-                    if _auto_attach_remote_session_locked(session):
+                    if _auto_attach_remote_session_locked(session, lock):
                         raise IdleError("核对原启动请求后仍检测到活跃实例，未确认释放")
                     _set_start_pending(lock, False)
                     print("[colab-ai] 已核对原启动请求无实例并清理启动保护。", flush=True)

@@ -479,6 +479,18 @@ def ensure_models_and_comfy(model_keys, port: int = 8188):
         except Exception:
             subprocess.run(["uv", "pip", "install", "--system", "-q", "-U", "av>=14.2.0"], check=False)
 
+    def _gpu_total_vram_gb() -> float:
+        try:
+            out = subprocess.check_output(
+                ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+                text=True, timeout=5,
+            ).strip().splitlines()
+            if out:
+                return float(out[0].strip()) / 1024.0
+        except Exception:
+            pass
+        return 96.0
+
     def healthy():
         try:
             urllib.request.urlopen(f"http://127.0.0.1:{port}/system_stats", timeout=2).read()
@@ -487,12 +499,45 @@ def ensure_models_and_comfy(model_keys, port: int = 8188):
         except Exception:
             return False
 
+    vram_gb = _gpu_total_vram_gb()
+    if vram_gb >= 60.0:
+        vram_args = ["--highvram"]
+    elif vram_gb >= 28.0:
+        vram_args = []
+        print(f"[image] 检测到显存 {vram_gb:.1f} GiB，ComfyUI 自动启用标准显存模式 (normalvram) 防 OOM", flush=True)
+    else:
+        vram_args = ["--lowvram"]
+        print(f"[image] 检测到显存 {vram_gb:.1f} GiB，ComfyUI 自动启用 --lowvram 防 OOM", flush=True)
+
     _ensure_http_service(
         port, healthy,
-        [sys.executable, "main.py", "--listen", "127.0.0.1", "--port", str(port), "--highvram"],
+        [sys.executable, "main.py", "--listen", "127.0.0.1", "--port", str(port), *vram_args],
         "/content/comfyui.log", 90, "main.py.*--port " + str(port), cwd=COMFY_DIR
     )
     ensure_tunnel(port)
+
+
+def _yield_llm_vram_if_needed():
+    try:
+        out = subprocess.check_output(
+            ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+            text=True, timeout=5,
+        ).strip().splitlines()
+        vram_gb = float(out[0].strip()) / 1024.0 if out else 96.0
+    except Exception:
+        return
+    if vram_gb >= 60.0:
+        return
+    try:
+        req = urllib.request.Request(
+            "http://127.0.0.1:8189/unload",
+            data=b"{}",
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        urllib.request.urlopen(req, timeout=180).read()
+    except Exception:
+        pass
 
 
 def _clean_prompt_terms(prompt: str, img_prompt_cfg: dict = None) -> str:
@@ -841,13 +886,26 @@ def main():
         unet, label = UNET_BY_KEY[mks[0]]
         lbl_all = " + ".join(UNET_BY_KEY[k][1] for k in mks)
         print(f"[image] 已就绪权重 ({lbl_all})，正在预热 {label} ...", flush=True)
-        run_single_stage(unet, f"{label} 预热", "warmup_img", "a sunlit architectural studio", 256, 256, 1, 1.0, 1, "/tmp/warmup_out")
+        with open("/content/.colab_vram_switch.lock", "a+") as _vlock:
+            try:
+                _vout = subprocess.check_output(
+                    ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+                    text=True, timeout=5,
+                ).strip().splitlines()
+                _vgb = float(_vout[0].strip()) / 1024.0 if _vout else 96.0
+            except Exception:
+                _vgb = 96.0
+            if _vgb < 60.0:
+                fcntl.flock(_vlock.fileno(), fcntl.LOCK_EX)
+                _yield_llm_vram_if_needed()
+            run_single_stage(unet, f"{label} 预热", "warmup_img", "a sunlit architectural studio", 256, 256, 1, 1.0, 1, "/tmp/warmup_out")
         shutil.rmtree("/tmp/warmup_out", ignore_errors=True)
         print("COLAB_AI_WARMUP_OK=image", flush=True)
         return
 
     mk = normalize_model_key(args.model, False)
     ensure_models_and_comfy([mk])
+    _yield_llm_vram_if_needed()
 
     prompt = args.prompt or " ".join(args.prompt_pos).strip()
     if args.prompt_file and os.path.exists(args.prompt_file):

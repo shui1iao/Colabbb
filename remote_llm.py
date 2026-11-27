@@ -185,6 +185,65 @@ def _ensure_llama_server_bin() -> str:
     print(f"[llm_server] llama-server 已就绪 (b12282 CUDA 12.8): {LLAMA_BIN}", flush=True)
     return LLAMA_BIN
 
+def _gpu_total_vram_gb() -> float:
+    try:
+        out = subprocess.check_output(
+            ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+            text=True, timeout=5,
+        ).strip().splitlines()
+        if out:
+            return float(out[0].strip()) / 1024.0
+    except Exception:
+        pass
+    return 96.0
+
+def _need_vram_swap() -> bool:
+    return _gpu_total_vram_gb() < 60.0
+
+def _wait_comfy_idle(max_wait_sec: float = 300.0):
+    t0 = time.time()
+    while time.time() - t0 < max_wait_sec:
+        try:
+            q = json.loads(urllib.request.urlopen("http://127.0.0.1:8188/queue", timeout=2).read().decode())
+            running = q.get("queue_running") or []
+            pending = q.get("queue_pending") or []
+            if not running and not pending:
+                return
+        except Exception:
+            return
+        time.sleep(0.6)
+
+def _free_comfy_vram_if_needed():
+    if not _need_vram_swap():
+        return
+    _wait_comfy_idle(300.0)
+    try:
+        req = urllib.request.Request(
+            "http://127.0.0.1:8188/free",
+            data=json.dumps({"unload_models": True, "free_memory": True}).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        urllib.request.urlopen(req, timeout=10).read()
+        time.sleep(0.5)
+    except Exception:
+        pass
+
+def _unload_llm_backend():
+    global BACKEND_PROC
+    try:
+        if BACKEND_PROC is not None and BACKEND_PROC.poll() is None:
+            BACKEND_PROC.terminate()
+            try:
+                BACKEND_PROC.wait(timeout=8)
+            except Exception:
+                BACKEND_PROC.kill()
+    except Exception:
+        pass
+    BACKEND_PROC = None
+    subprocess.run(["pkill", "-9", "-f", f"llama-server.*{BACKEND_PORT}"], check=False)
+    time.sleep(0.4)
+
 def _backend_healthy() -> bool:
     try:
         r = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{BACKEND_PORT}/health", timeout=2).read().decode())
@@ -224,38 +283,43 @@ def load_model(model_key: str = "qwen27b"):
     env = os.environ.copy()
     env["LD_LIBRARY_PATH"] = ":".join(lib_dirs + ([env["LD_LIBRARY_PATH"]] if env.get("LD_LIBRARY_PATH") else []))
 
-    subprocess.run(["pkill", "-9", "-f", f"llama-server.*{BACKEND_PORT}"], check=False)
-    time.sleep(0.8)
+    with open("/content/.colab_vram_switch.lock", "a+") as _vlock:
+        if _need_vram_swap():
+            fcntl.flock(_vlock.fileno(), fcntl.LOCK_EX)
+        subprocess.run(["pkill", "-9", "-f", f"llama-server.*{BACKEND_PORT}"], check=False)
+        time.sleep(0.8)
+        _free_comfy_vram_if_needed()
 
-    log_fh = open("/content/llama_backend.log", "a")
-    cmd = [
-        server_bin,
-        "-m", gguf_path,
-        "--host", "127.0.0.1",
-        "--port", str(BACKEND_PORT),
-        "-ngl", "999",
-        "-c", "12288",
-        "-np", "1",
-        "-fa", "on",
-        "--no-warmup",
-    ]
-    print(f"[llm_server] 正在将 {spec['filename']} 全层加载至 GPU 显存...", flush=True)
-    t0 = time.time()
-    BACKEND_PROC = subprocess.Popen(cmd, env=env, stdout=log_fh, stderr=log_fh, start_new_session=True)
-    for _ in range(240):
-        time.sleep(1.0)
-        if BACKEND_PROC.poll() is not None:
-            tail_e = open("/content/llama_backend.log", "r", encoding="utf-8", errors="ignore").read()[-800:]
-            if "-fa" in cmd:
-                cmd = [x for x in cmd if x not in ("-fa", "on")]
-                BACKEND_PROC = subprocess.Popen(cmd, env=env, stdout=log_fh, stderr=log_fh, start_new_session=True)
-                continue
-            raise RuntimeError(f"llama-server 启动失败:\n{tail_e}")
-        if _backend_healthy():
-            CURRENT_KEY = model_key
-            print(f"[llm_server] {spec['label']} 已全层常驻 GPU 显存 ({time.time()-t0:.1f}s)!", flush=True)
-            return
-    raise RuntimeError("llama-server 加载超时，请检查 /content/llama_backend.log")
+        log_fh = open("/content/llama_backend.log", "a")
+        ctx_sz = "6144" if _gpu_total_vram_gb() < 28.0 else "12288"
+        cmd = [
+            server_bin,
+            "-m", gguf_path,
+            "--host", "127.0.0.1",
+            "--port", str(BACKEND_PORT),
+            "-ngl", "999",
+            "-c", ctx_sz,
+            "-np", "1",
+            "-fa", "on",
+            "--no-warmup",
+        ]
+        print(f"[llm_server] 正在将 {spec['filename']} 全层加载至 GPU 显存 (ctx={ctx_sz})...", flush=True)
+        t0 = time.time()
+        BACKEND_PROC = subprocess.Popen(cmd, env=env, stdout=log_fh, stderr=log_fh, start_new_session=True)
+        for _ in range(240):
+            time.sleep(1.0)
+            if BACKEND_PROC.poll() is not None:
+                tail_e = open("/content/llama_backend.log", "r", encoding="utf-8", errors="ignore").read()[-800:]
+                if "-fa" in cmd:
+                    cmd = [x for x in cmd if x not in ("-fa", "on")]
+                    BACKEND_PROC = subprocess.Popen(cmd, env=env, stdout=log_fh, stderr=log_fh, start_new_session=True)
+                    continue
+                raise RuntimeError(f"llama-server 启动失败:\n{tail_e}")
+            if _backend_healthy():
+                CURRENT_KEY = model_key
+                print(f"[llm_server] {spec['label']} 已全层常驻 GPU 显存 ({time.time()-t0:.1f}s)!", flush=True)
+                return
+        raise RuntimeError("llama-server 加载超时，请检查 /content/llama_backend.log")
 
 def _build_qwen_chatml(messages: list, check_prefix: str) -> str:
     parts = []
@@ -341,9 +405,12 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/health":
             spec = MODEL_SPECS.get(CURRENT_KEY or "qwen27b", MODEL_SPECS["qwen27b"])
             ok_loaded = _backend_healthy()
+            need_swap = _need_vram_swap()
             self._send({
                 "ok": True,
                 "loaded": ok_loaded,
+                "on_demand": bool(ok_loaded or CURRENT_KEY is not None or need_swap),
+                "need_vram_swap": need_swap,
                 "model_key": CURRENT_KEY or "qwen27b",
                 "model": f"{spec['repo']}/{spec['filename']}",
                 "model_label": spec["label"],
@@ -356,6 +423,11 @@ class Handler(BaseHTTPRequestHandler):
         self._send({"ok": False}, 404)
 
     def do_POST(self):
+        if self.path == "/unload":
+            with LLM_LOCK:
+                _unload_llm_backend()
+            self._send({"ok": True, "unloaded": True})
+            return
         if self.path == "/generate":
             try:
                 length = int(self.headers.get("Content-Length", "0"))

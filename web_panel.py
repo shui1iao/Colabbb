@@ -1951,10 +1951,14 @@ PANEL_RANDOM = PanelRandomOrchestrator()
 def has_colab_instance():
     """Query server assignments without syncing state, creating or trusting caches."""
     query = (
-        "import json\n"
-        "from colab_cli.common import state\n"
+        "import json, sys\n"
+        f"sys.path.insert(0, {BASE_DIR!r})\n"
+        "import colab_accounts\n"
+        "from colab_startup import _creds_from_client, list_effective_assignments, verified_client\n"
         "try:\n"
-        "    assignments = state.client.list_assignments()\n"
+        "    cl, acct = verified_client()\n"
+        "    qp = colab_accounts.resolve_quota_project(acct['email'], _creds_from_client(cl))\n"
+        "    assignments = list_effective_assignments(cl, qp)\n"
         "    if not isinstance(assignments, list): raise RuntimeError('Invalid assignments')\n"
         "    print(json.dumps({'active': bool(assignments)}))\n"
         "except (Exception, SystemExit):\n"
@@ -1978,7 +1982,7 @@ def has_colab_instance():
     return data["active"]
 
 
-_STATUS_CACHE = {"ts": 0.0, "data": None}
+_STATUS_CACHE = {"ts": 0.0, "reg_mtime": 0.0, "data": None}
 _STATUS_LOCK = threading.Lock()
 STATUS_TTL = 30.0
 STATUS_FAIL_TTL = 5.0
@@ -1986,10 +1990,16 @@ STATUS_FAIL_TTL = 5.0
 def get_colab_status(force: bool = False):
     # One authoritative billing read provides balance, hourly rate and active count.
     # Never infer power/billing from a live tunnel or extend stale data with it.
+    cur_reg_mtime = colab_accounts._registry_mtime()
     with _STATUS_LOCK:
         now = time.time()
         cached_ttl = STATUS_TTL if (_STATUS_CACHE["data"] and _STATUS_CACHE["data"].get("active") is not None) else STATUS_FAIL_TTL
-        if not force and _STATUS_CACHE["data"] is not None and (now - _STATUS_CACHE["ts"] < cached_ttl):
+        if (
+            not force
+            and _STATUS_CACHE["data"] is not None
+            and _STATUS_CACHE.get("reg_mtime") == cur_reg_mtime
+            and (now - _STATUS_CACHE["ts"] < cached_ttl)
+        ):
             return _STATUS_CACHE["data"]
         data = {"active": None, "sessions_raw": "状态检查失败", "balance": "未知", "rate": "未知"}
         query = (
@@ -2039,6 +2049,7 @@ def get_colab_status(force: bool = False):
         except Exception:
             pass
         _STATUS_CACHE["ts"] = time.time()
+        _STATUS_CACHE["reg_mtime"] = colab_accounts._registry_mtime()
         _STATUS_CACHE["data"] = data
         return data
 

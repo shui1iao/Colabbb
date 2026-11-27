@@ -18,7 +18,7 @@ BASE_DIR = os.path.dirname(os.path.realpath(__file__))
 BASE_DIR = os.path.abspath(os.environ.get("COLABBB_HOME") or BASE_DIR)
 
 _ACCOUNTS_CACHE_LOCK = threading.Lock()
-_ACCOUNTS_CACHE = {"ts": 0.0, "data": None}
+_ACCOUNTS_CACHE = {"ts": 0.0, "reg_mtime": 0.0, "data": None}
 ACCOUNTS_CACHE_TTL = 30.0
 
 
@@ -192,6 +192,7 @@ def load_registry() -> dict:
             "active_email": active,
             "drive_sync_email": drive_em,
             "accounts": accounts,
+            "quota_projects": {},
         }
         if accounts:
             _atomic_write_json(reg_file, reg, 0o600)
@@ -221,12 +222,21 @@ def load_registry() -> dict:
     if drive_em not in seen and seen:
         drive_em = pref_primary if (pref_primary and pref_primary in seen) else active
 
+    raw_qp = reg.get("quota_projects") if isinstance(reg.get("quota_projects"), dict) else {}
+    clean_qp = {}
+    for k, v in raw_qp.items():
+        nk = _norm_email(k)
+        nv = str(v or "").strip()
+        if nk and nv:
+            clean_qp[nk] = nv
+
     out = {
         "active_email": active,
         "drive_sync_email": drive_em,
         "accounts": clean_accts,
+        "quota_projects": clean_qp,
     }
-    if out != reg and clean_accts:
+    if out != reg and (clean_accts or clean_qp):
         _atomic_write_json(reg_file, out, 0o600)
     return out
 
@@ -264,6 +274,71 @@ def get_drive_sync_token_json(preferred_email: str = None) -> str:
             return fh.read().strip()
     except OSError:
         return ""
+
+
+def resolve_quota_project(email: str, creds=None) -> str:
+    """Resolve (or auto-discover & enable) the GCP quota project for Colab Public API."""
+    env_qp = (os.environ.get("COLABBB_QUOTA_PROJECT") or "").strip()
+    if env_qp:
+        return env_qp
+
+    em = _norm_email(email)
+    if not em:
+        return ""
+    reg = load_registry()
+    qp_map = reg.get("quota_projects") if isinstance(reg.get("quota_projects"), dict) else {}
+    cached = str(qp_map.get(em) or "").strip()
+    if cached:
+        return cached
+
+    if creds is None and os.path.isfile(token_path_for(em)):
+        try:
+            creds = _load_credentials_for_email(em)
+        except Exception:
+            creds = None
+    if creds is None:
+        return ""
+
+    try:
+        from google.auth.transport.requests import AuthorizedSession
+
+        sess = AuthorizedSession(creds, max_refresh_attempts=0)
+        r = sess.get("https://cloudresourcemanager.googleapis.com/v1/projects", timeout=15)
+        if r.status_code != 200:
+            return ""
+        projs = [
+            p.get("projectId", "").strip()
+            for p in (r.json().get("projects") or [])
+            if p.get("lifecycleState") == "ACTIVE" and p.get("projectId")
+        ]
+        for pid in projs[:5]:
+            chk = sess.get(
+                "https://colaboratory.googleapis.com/v1beta/subscription",
+                headers={"Accept": "application/json", "x-goog-user-project": pid},
+                timeout=10,
+            )
+            if chk.status_code != 200:
+                en = sess.post(
+                    f"https://serviceusage.googleapis.com/v1/projects/{pid}/services/colaboratory.googleapis.com:enable",
+                    json={},
+                    timeout=20,
+                )
+                if en.status_code != 200:
+                    continue
+                time.sleep(2)
+                chk = sess.get(
+                    "https://colaboratory.googleapis.com/v1beta/subscription",
+                    headers={"Accept": "application/json", "x-goog-user-project": pid},
+                    timeout=10,
+                )
+            if chk.status_code == 200:
+                reg = load_registry()
+                reg.setdefault("quota_projects", {})[em] = pid
+                _atomic_write_json(_registry_file(), reg, 0o600)
+                return pid
+    except Exception:
+        pass
+    return ""
 
 
 def _load_credentials_for_email(email: str):
@@ -328,13 +403,27 @@ def query_account_billing(email: str) -> dict:
 def invalidate_accounts_cache():
     with _ACCOUNTS_CACHE_LOCK:
         _ACCOUNTS_CACHE["ts"] = 0.0
+        _ACCOUNTS_CACHE["reg_mtime"] = 0.0
         _ACCOUNTS_CACHE["data"] = None
 
 
+def _registry_mtime() -> float:
+    try:
+        return os.path.getmtime(_registry_file())
+    except OSError:
+        return 0.0
+
+
 def list_accounts_with_status(force: bool = False, drive_sync_enabled: bool = False) -> dict:
+    cur_mtime = _registry_mtime()
     with _ACCOUNTS_CACHE_LOCK:
         now = time.time()
-        if (not force) and _ACCOUNTS_CACHE["data"] is not None and (now - _ACCOUNTS_CACHE["ts"] < ACCOUNTS_CACHE_TTL):
+        if (
+            (not force)
+            and _ACCOUNTS_CACHE["data"] is not None
+            and _ACCOUNTS_CACHE.get("reg_mtime") == cur_mtime
+            and (now - _ACCOUNTS_CACHE["ts"] < ACCOUNTS_CACHE_TTL)
+        ):
             return _ACCOUNTS_CACHE["data"]
 
     if force:
@@ -383,6 +472,7 @@ def list_accounts_with_status(force: bool = False, drive_sync_enabled: bool = Fa
     }
     with _ACCOUNTS_CACHE_LOCK:
         _ACCOUNTS_CACHE["ts"] = time.time()
+        _ACCOUNTS_CACHE["reg_mtime"] = _registry_mtime()
         _ACCOUNTS_CACHE["data"] = payload
     return payload
 
@@ -406,10 +496,10 @@ def _clear_ephemeral_kernel_stamps():
 def _reconcile_start_pending_for_switch(slk, current_email: str, cur_creds):
     """Authoritatively reconcile session-start lock before account switch."""
     import uuid as _uuid
-    from colab_cli.client import Assignment, Client, GetAssignmentResponse, Prod
+    from colab_cli.client import Client, Prod
     from colab_cli.commands.session import resolve_runtime_options
     from google.auth.transport.requests import AuthorizedSession
-    from colab_startup import PendingError, read_pending
+    from colab_startup import PendingError, parse_gpu_spec, query_pending_by_uuid, read_pending
 
     sess = (os.environ.get("COLAB_SESSION", "ai") or "ai").strip() or "ai"
     try:
@@ -438,6 +528,7 @@ def _reconcile_start_pending_for_switch(slk, current_email: str, cur_creds):
         return "blocked", "当前账号授权不可用，无法核对上次创建状态；保留启动保护并中止切换", {"start_unconfirmed": True}
 
     try:
+        qp = resolve_quota_project(current_email, cur_creds)
         auth = AuthorizedSession(cur_creds, max_refresh_attempts=0)
         ui_resp = auth.get("https://www.googleapis.com/oauth2/v3/userinfo", timeout=15)
         ui_resp.raise_for_status()
@@ -445,15 +536,16 @@ def _reconcile_start_pending_for_switch(slk, current_email: str, cur_creds):
         actual_acct = {"email": str(info.get("email", "")).strip().lower(), "sub": info.get("sub")}
         if actual_acct != pending["account"] or info.get("email_verified") is not True:
             return "blocked", "当前凭据与启动保护账号身份不一致，拒绝切换", {"start_unconfirmed": True}
-        variant, accelerator, shape = resolve_runtime_options(gpu=pending["gpu"], tpu=None, high_mem=False)
+        base_gpu, high_mem, _ = parse_gpu_spec(pending["gpu"])
+        variant, accelerator, shape = resolve_runtime_options(gpu=base_gpu, tpu=None, high_mem=high_mem)
         client = Client(Prod(), auth)
-        res = client._get_assignment(_uuid.UUID(pending["request_uuid"]), variant, accelerator, shape)
+        q_st, _ = query_pending_by_uuid(client, _uuid.UUID(pending["request_uuid"]), variant, accelerator, shape, qp)
     except Exception:
         return "blocked", "无法向 Google 核对上次创建请求状态，保留启动保护并中止切换", {"start_unconfirmed": True}
 
-    if isinstance(res, Assignment):
+    if q_st == "allocated":
         return "active", "", {}
-    if isinstance(res, GetAssignmentResponse):
+    if q_st == "empty":
         return "query_empty", "", {}
     return "blocked", "固定请求查询响应未知，保留启动保护并拒绝切换", {"start_unconfirmed": True}
 
@@ -463,6 +555,193 @@ def _truncate_start_lock_in_place(slk):
     slk.truncate()
     slk.flush()
     os.fsync(slk.fileno())
+
+
+def find_other_accounts_for_failover(min_balance: float = 1.0) -> list[dict]:
+    """Return healthy non-active accounts eligible for automatic startup failover."""
+    from colab_cli.client import Client, Prod
+    from google.auth.transport.requests import AuthorizedSession
+    from colab_startup import list_effective_assignments
+
+    reg = load_registry()
+    active_em = _norm_email(reg.get("active_email") or "")
+    candidates = [
+        _norm_email(a.get("email") or "")
+        for a in reg.get("accounts", [])
+        if _norm_email(a.get("email") or "") and _norm_email(a.get("email") or "") != active_em
+    ]
+    out = []
+    for em in candidates:
+        if not os.path.isfile(token_path_for(em)):
+            continue
+        try:
+            creds = _load_credentials_for_email(em)
+            qp = resolve_quota_project(em, creds)
+            cl = Client(Prod(), AuthorizedSession(creds, max_refresh_attempts=0))
+            info = cl.get_consumption_user_info()
+            bal = float(info.paid_compute_units_balance)
+            cnt = int(info.assignments_count)
+            if not math.isfinite(bal):
+                continue
+            asgs = list_effective_assignments(cl, qp)
+            if not isinstance(asgs, list):
+                continue
+            has_running = len(asgs) > 0 or cnt > 0
+            if (not has_running) and bal < min_balance:
+                continue
+            out.append({
+                "email": em,
+                "balance": round(bal, 2),
+                "has_running": len(asgs) > 0,
+                "endpoints": [a.endpoint for a in asgs],
+                "accelerators": [a.accelerator.value.upper() for a in asgs],
+            })
+        except Exception:
+            continue
+    return out
+
+
+def switch_account_under_start_lock(slk, target_email: str, session: str = "ai") -> tuple[str, str]:
+    """Switch active account while caller ALREADY holds exclusive flock on original session-start lock `slk`.
+
+    Never re-opens/re-flocks `slk` and never unlinks/replaces `slk` inode.
+    Returns (status, message) with status in ("switched", "already_active", "current_has_instance", "error").
+    """
+    import uuid as _uuid
+    from colab_cli.auth import PUBLIC_SCOPES, _get_token_from_keyring, _save_token_to_keyring
+    from colab_cli.client import Client, Prod
+    from colab_cli.commands.session import resolve_runtime_options
+    from google.auth.transport.requests import AuthorizedSession
+    from google.oauth2.credentials import Credentials
+    from colab_startup import (
+        PendingError,
+        list_effective_assignments,
+        parse_gpu_spec,
+        query_pending_by_uuid,
+        read_pending,
+    )
+
+    _ensure_dir()
+    target = _norm_email(target_email)
+    if not target or "@" not in target:
+        return "error", "目标账号邮箱无效"
+
+    with open(_switch_lock_file(), "a+", encoding="utf-8") as lk:
+        try:
+            os.fchmod(lk.fileno(), 0o600)
+        except OSError:
+            pass
+        fcntl.flock(lk.fileno(), fcntl.LOCK_EX)
+
+        reg = load_registry()
+        known = {_norm_email(a.get("email") or "") for a in reg.get("accounts", [])}
+        if target not in known or not os.path.isfile(token_path_for(target)):
+            return "error", f"未找到目标账号凭证: {target}"
+
+        try:
+            target_creds = _load_credentials_for_email(target)
+            target_token_json = target_creds.to_json()
+        except Exception:
+            return "error", f"目标账号 ({target}) 授权不可用"
+
+        current = _norm_email(reg.get("active_email") or "")
+        if current == target:
+            try:
+                _save_token_to_keyring(target_token_json)
+            except Exception as exc:
+                return "error", f"同步系统凭据失败 ({type(exc).__name__})"
+            invalidate_accounts_cache()
+            return "already_active", f"当前已在使用 {target}"
+
+        try:
+            pending = read_pending(slk, session, allow_legacy=True)
+        except (PendingError, OSError) as exc:
+            return "error", f"启动保护状态异常，拒绝切号: {exc}"
+        if pending is not None and pending.get("legacy"):
+            return "error", "旧启动保护未核实，拒绝自动切号"
+        if pending is not None and current and pending["account"]["email"] != current:
+            return "error", "启动保护所属账号与当前账号不一致，拒绝自动切号"
+
+        if current and os.path.isfile(token_path_for(current)):
+            try:
+                cur_creds = _load_credentials_for_email(current)
+                cur_qp = resolve_quota_project(current, cur_creds)
+                cur_auth = AuthorizedSession(cur_creds, max_refresh_attempts=0)
+                cur_client = Client(Prod(), cur_auth)
+                cur_assignments = list_effective_assignments(cur_client, cur_qp)
+                if not isinstance(cur_assignments, list):
+                    return "error", "原账号实例列表响应异常，中止自动切号"
+                if len(cur_assignments) > 0:
+                    return "current_has_instance", f"原账号 ({current}) 检测到活跃实例，直接接管复用"
+                if pending is not None:
+                    base_gpu, high_mem, _ = parse_gpu_spec(pending["gpu"])
+                    variant, accelerator, shape = resolve_runtime_options(gpu=base_gpu, tpu=None, high_mem=high_mem)
+                    q_st, _ = query_pending_by_uuid(
+                        cur_client, _uuid.UUID(pending["request_uuid"]), variant, accelerator, shape, cur_qp
+                    )
+                    if q_st == "allocated":
+                        return "current_has_instance", f"原账号 ({current}) 原请求刚刚出卡，直接接管复用"
+                    if q_st != "empty":
+                        return "error", "原账号固定请求对账响应未知，中止自动切号"
+            except Exception:
+                return "error", f"无法向 Google 确认原账号 ({current}) 无活跃实例，中止自动切号防双扣费"
+
+        sess_path = _sessions_path()
+        prev_sessions_existed = os.path.isfile(sess_path)
+        prev_sessions_raw = None
+        if prev_sessions_existed:
+            try:
+                with open(sess_path, "r", encoding="utf-8") as pf:
+                    prev_sessions_raw = pf.read()
+            except OSError:
+                prev_sessions_raw = None
+
+        if current:
+            try:
+                kr_tok = _get_token_from_keyring()
+                if kr_tok:
+                    _ = Credentials.from_authorized_user_info(json.loads(kr_tok), PUBLIC_SCOPES)
+                    _atomic_write_text(token_path_for(current), kr_tok, 0o600)
+            except Exception:
+                pass
+            if prev_sessions_raw is not None:
+                try:
+                    json.loads(prev_sessions_raw or "{}")
+                    _atomic_write_text(sessions_path_for(current), prev_sessions_raw, 0o600)
+                except Exception:
+                    pass
+
+        target_sess_file = sessions_path_for(target)
+        restored_sessions = "{}\n"
+        if os.path.isfile(target_sess_file):
+            try:
+                with open(target_sess_file, "r", encoding="utf-8") as tsf:
+                    cand = tsf.read()
+                if isinstance(json.loads(cand or "{}"), dict):
+                    restored_sessions = cand
+            except Exception:
+                restored_sessions = "{}\n"
+
+        os.makedirs(os.path.dirname(sess_path), mode=0o700, exist_ok=True)
+        _atomic_write_text(sess_path, restored_sessions, 0o600)
+        try:
+            _save_token_to_keyring(target_token_json)
+        except Exception as exc:
+            try:
+                if prev_sessions_existed and prev_sessions_raw is not None:
+                    _atomic_write_text(sess_path, prev_sessions_raw, 0o600)
+                elif not prev_sessions_existed and os.path.isfile(sess_path):
+                    os.unlink(sess_path)
+            except OSError:
+                pass
+            return "error", f"写入系统凭据失败，已回滚 ({type(exc).__name__})"
+
+        _clear_ephemeral_kernel_stamps()
+        _truncate_start_lock_in_place(slk)
+        reg["active_email"] = target
+        _atomic_write_json(_registry_file(), reg, 0o600)
+        invalidate_accounts_cache()
+        return "switched", f"已切换算力账号至 {target}"
 
 
 def switch_active_account(
@@ -518,12 +797,15 @@ def switch_active_account(
 
             cur_creds = None
             cur_client = None
+            cur_qp = ""
             cur_assignments = []
             if current and os.path.isfile(token_path_for(current)):
                 try:
+                    from colab_startup import list_effective_assignments
                     cur_creds = _load_credentials_for_email(current)
+                    cur_qp = resolve_quota_project(current, cur_creds)
                     cur_client = Client(Prod(), AuthorizedSession(cur_creds))
-                    cur_assignments = cur_client.list_assignments()
+                    cur_assignments = list_effective_assignments(cur_client, cur_qp)
                     if not isinstance(cur_assignments, list):
                         raise RuntimeError("invalid assignments")
                 except Exception:
@@ -579,7 +861,8 @@ def switch_active_account(
                             {"stop_failed": True},
                         )
                     try:
-                        rem = cur_client.list_assignments()
+                        from colab_startup import list_effective_assignments
+                        rem = list_effective_assignments(cur_client, cur_qp)
                         if not isinstance(rem, list) or len(rem) > 0:
                             raise RuntimeError("still running")
                     except Exception:
@@ -730,6 +1013,10 @@ def complete_oauth_login(code: str) -> tuple[bool, str, dict]:
     if _norm_email(reg.get("active_email") or "") == email:
         _save_token_to_keyring(tok_json)
     _atomic_write_json(_registry_file(), reg, 0o600)
+    try:
+        resolve_quota_project(email, creds)
+    except Exception:
+        pass
     invalidate_accounts_cache()
 
     bill = query_account_billing(email)
