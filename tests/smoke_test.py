@@ -238,10 +238,9 @@ def main():
             with logged.open(range_req, timeout=5) as rr:
                 assert rr.status == 206 and rr.read() == png_1x1[:8]
                 assert rr.headers.get('Content-Range') == f'bytes 0-7/{len(png_1x1)}'
-            # 5. 保存非法 strip_regexes 返回 400
-            bad_cfg = json.loads(request(logged, '/api/settings')[1])['settings']
-            bad_cfg['image_prompt']['strip_regexes'] = ['[unclosed']
-            assert request(logged, '/api/settings', bad_cfg)[0] == 400
+            # 5. 设置页面与写入接口已移除：POST /api/settings 与 /api/settings/reset 返回 404，只读 GET /api/settings 保留
+            assert request(logged, '/api/settings', {'llm': {'system_prompt': 'x'}})[0] == 404
+            assert request(logged, '/api/settings/reset', {'section': 'all'})[0] == 404
             # 热覆盖是完整模板替换，不改动权威 HTML。
             override = b'<!doctype html><html><body>override-check</body></html>'
             (state / 'panel_ui.html').write_bytes(override)
@@ -301,14 +300,13 @@ def main():
             assert det['ok'] and det['state'] == 'running', det
             ui_txt = (ROOT / 'ui/panel_ui.html').read_text(encoding='utf-8')
             for marker in (
-                'id="appSidebar"', 'id="topStatusCard"', 'id="mobileBottomNav"', 'id="mobNavGlider"',
-                "case 'logout-panel':", 'pwa-standalone',
-                'id="worksGalleryScroll"', 'container: works-card / inline-size;', 'container: settings-card / inline-size;',
-                'const docked = !isMobileScrollShell();', 'navPage: currentPage,', 'function getDesktopScrollEl(',
-                'minmax(160px, 1fr) max-content', '@container works-card (max-width: 1080px)',
-                'width: 152px;', 'let _lastTaskRunningFlag = false;'
+                'id="topNav"', 'id="taskPill"', 'id="machinePill"', 'id="stageView"',
+                'id="stagePrev"', 'id="stageNext"', 'id="viewerZoomSlider"', 'id="viewerMobBar"',
+                'id="uiTip"', "'logout-panel':", 'data-tip=', 'bindScrollFade'
             ):
                 assert marker in ui_txt, f'missing UI marker: {marker}'
+            for removed in ('id="appSidebar"', 'id="mobileBottomNav"', 'POST /api/settings'):
+                assert removed not in ui_txt, f'stale marker present: {removed}'
             import hashlib as _hl, re as _re
             _sm = _re.search(r'<script>(.*)</script>', ui_txt, _re.S)
             assert _sm, 'inline script missing in ui/panel_ui.html'
@@ -316,7 +314,7 @@ def main():
             assert f"script-src 'sha256-{_sha}'" in ui_txt, f'CSP script-src sha256 mismatch: expected {_sha}'
             assert ui_txt == panel.HTML_PAGE, 'ui/panel_ui.html out of sync with web_panel.HTML_PAGE'
             assert '_fatal_conn_err' in (ROOT / 'colab-ai').read_text(encoding='utf-8')
-            print('PASS v0.2.7 unified layout, fixed top-bar widths, works search min-width, exec hang guard & CSP SHA-256')
+            print('PASS v0.2.10 redesigned UI, removed settings write API, exec hang guard & CSP SHA-256')
 
             # v0.2.8 回归：Colab Public API 规格解析、endpoint 提取、配额项目解析、候选回退链与显存自适应
             assert colab_startup.parse_gpu_spec('G4') == ('G4', False, 'G4')
@@ -339,21 +337,23 @@ def main():
             assert '"/unload"' in (ROOT / 'remote_llm.py').read_text(encoding='utf-8')
             print('PASS v0.2.8 Colab Public API, A100-HM fallback chain, quota project resolution & VRAM swap guard')
 
-            # v0.2.9 回归：NO_RUNTIMES 换新 UUID 重试、视频显存自适应、桌面顶栏防裁切、移动端抽屉挂载与滚动/横滑、零未定义函数引用
+            # v0.2.10 回归：NO_RUNTIMES 重试、视频显存自适应、Kat 同源 UI 门禁（0 原生 title=、0 裸圆角、0 负边距、0 重复选择器、无设置写入接口）
             assert '"no_runtimes"' in (ROOT / 'colab_startup.py').read_text(encoding='utf-8')
             assert 'last_no_runtimes_at' in (ROOT / 'colab-ai').read_text(encoding='utf-8')
             assert '"http://127.0.0.1:8189/unload"' in (ROOT / 'remote_video.py').read_text(encoding='utf-8')
             assert 'closeZenoSelect' not in ui_txt, 'stale closeZenoSelect ReferenceError in UI'
-            for m029 in (
-                'min-width: 218px;', 'min-width: 152px;', 'panel.dataset.drawer = \'1\'',
-                'width: calc(100vw - 16px);', 'touch-action: pan-x pan-y;',
-                '.task-item-wrap.paused .task-badge'
-            ):
-                assert m029 in ui_txt, f'missing v0.2.9 UI marker: {m029}'
+            _body_txt = ui_txt[ui_txt.find('<body'):ui_txt.find('<script>')]
+            assert not _re.findall(r'<[^>]*\btitle\s*=', _body_txt), 'native title= found in ui/panel_ui.html'
+            assert not [b for b in _re.findall(r'<button\b[^>]*>', _body_txt) if not _re.search(r'\btype\s*=', b)], 'button missing type='
             _style_m = _re.search(r'<style>(.*)</style>', ui_txt, _re.S)
-            _clean_css = _re.sub(r'/\*.*?\*/', '', _style_m.group(1), flags=_re.S)
+            _style_txt = _style_m.group(1)
+            _clean_css = _re.sub(r'/\*.*?\*/', '', _style_txt, flags=_re.S)
             assert _clean_css.count('{') == _clean_css.count('}'), 'unbalanced CSS braces in ui/panel_ui.html'
-            print('PASS v0.2.9 NO_RUNTIMES retry, video VRAM guard, mobile drawer portal, desktop badge sizing & zero ReferenceError')
+            _css_body = _style_txt[_style_txt.find('/* ===== 基础'):]
+            assert not [x for x in _re.findall(r'border-radius:\s*([^;]+);', _css_body) if _re.search(r'\d+px', x)], 'raw px border-radius in CSS'
+            assert not [l for l in _style_txt.splitlines() if _re.search(r'margin[^;]*-[0-9]', l)], 'negative margin hack in CSS'
+            assert 'output_name' in (ROOT / 'web_panel.py').read_text(encoding='utf-8')
+            print('PASS v0.2.10 Kat UI gates (0 title=, 0 raw radii, 0 neg margin), stepless zoom & mobile immersive viewer')
     print('ALL SMOKE TESTS PASSED')
 
 

@@ -18,7 +18,7 @@ import urllib.error
 import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
-IMAGE = 'colabbb-test:v0.2.4'
+IMAGE = 'colabbb-test:v0.2.10'
 
 
 def run(*args, **kwargs):
