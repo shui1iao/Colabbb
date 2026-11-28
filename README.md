@@ -1,8 +1,21 @@
-# Colabbb v0.2.10
+# Colabbb
 
-面向个人自托管的 AI 视觉创作工作台：中文 Web 面板管理远端 GPU 会话、多账号并发余额与防双开切换、二阶段 3K 生图、24fps 声画视频、AI 帮写提示词对话与作品库。包含 Kat 同源深浅色主题、统一顶栏与创作舞台、桌面/手机无级缩放沉浸看图、透明品牌图标、独立 FIFO 队列、随机灵感、取消任务与闲置关机租约。
+[![Release](https://img.shields.io/github/v/release/shui1iao/Colabbb?style=flat-square&color=2563eb)](https://github.com/shui1iao/Colabbb/releases/latest)
+[![Docker](https://img.shields.io/badge/ghcr.io-colabbb-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/shui1iao/Colabbb/pkgs/container/colabbb)
+[![License: MIT](https://img.shields.io/badge/License-MIT-16a34a?style=flat-square)](LICENSE)
 
-**100% Docker Compose 部署**：宿主机只需 Docker Engine 与 Compose 插件，不需要 Python、Colab CLI、systemd 服务或宿主机 SSH 配置。MIT 许可；源码不含账号、密钥、模型或生成作品。上游工具与权重各遵循其许可和服务条款。
+**面向远程 Colab GPU 的自托管 AI 视觉创作工作台**——全中文 Web 面板，一站式管理远端 GPU 会话、多账号余额切换、3K 二阶段生图、24fps 声画同步视频、AI 提示词对话与闲置自动关机守护。
+
+[三步启动](#三步启动) · [容器内置隔离隧道](#容器内置隔离隧道) · [可选模块](#可选模块) · [版本发布](https://github.com/shui1iao/Colabbb/releases)
+
+## 核心特性
+
+- **统一极简创作工作台**：桌面端与移动端一致的深浅色双主题体验，创作舞台与作品库无缝联动，支持无级缩放与沉浸式看图。
+- **远程 GPU 会话与算力托管**：原生接入 Colab Public API，支持多账号并发余额查看、防双开切换、卡池暂满自动重试与闲置自动关机租约。
+- **全能创作链路**：内置二阶段 3K 高清生图、24fps 声画同步视频生成、AI 帮写提示词对话、随机灵感与独立 FIFO 任务队列。
+- **100% Docker Compose 部署**：宿主机仅需 Docker Engine 与 Compose 插件，内置隔离 SSH 隧道，无需污染宿主机环境或安装 Python / Colab CLI。
+
+> MIT 许可；仓库源码不含任何账号、密钥、模型权重或生成作品。上游工具与模型权重各遵循其许可和服务条款。
 
 ## 三步启动
 
